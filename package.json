@@ -12,16 +12,21 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.3",
+    "lucide-preact": "^0.507.0",
     "preact": "^10.25.1",
-    "preact-router": "^4.1.2",
-    "tailwindcss": "^4.1.5"
+    "preact-iso": "^2.9.1"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.3",
+    "@tailwindcss/postcss": "^4.1.5",
     "@tauri-apps/cli": "^2",
+    "autoprefixer": "^10.4.21",
+    "classnames": "^2.5.1",
+    "postcss": "^8.5.3",
+    "preact-material-components": "^1.6.1",
+    "tailwindcss": "^4.1.5",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vite-plugin-node-polyfills": "^0.23.0"
   }
 }
