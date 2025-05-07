@@ -47,6 +47,26 @@ struct AddWorkoutCmdParams {
 }
 
 #[derive(Deserialize)]
+struct GetDataForGraphPayload {
+    identifier: String,
+    #[serde(alias = "graphTypeStr")]
+    graph_type_str: String,
+    start_date: Option<String>, // YYYY-MM-DD
+    end_date: Option<String>,   // YYYY-MM-DD
+}
+
+#[derive(Deserialize)]
+struct SetUnitsPayload {
+    units: String, // "metric" or "imperial"
+}
+
+#[derive(Deserialize)]
+struct MonthYearQuery {
+    year: i32,
+    month: u32,
+}
+
+#[derive(Deserialize)]
 struct EditWorkoutCmdParams {
     pub id: i64,
     pub new_exercise_identifier: Option<String>,
@@ -151,6 +171,26 @@ fn list_workouts(
     service
         .list_workouts(&lib_filters)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_workout_dates_for_month(
+    // This is the command for the frontend
+    query: MonthYearQuery, // The input struct { year: i32, month: u32 }
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    // Returns Vec<String> of "YYYY-MM-DD" or an error string
+    let service = state.lock().map_err(|e| {
+        format!(
+            "Failed to lock state for get_workout_dates_for_month: {}",
+            e
+        )
+    })?;
+
+    // Calls the AppService method from your lib.rs
+    service
+        .get_workout_dates_for_month(query.year, query.month)
+        .map_err(|e| format!("Error fetching workout dates from lib: {}", e))
 }
 
 #[tauri::command]
@@ -329,16 +369,15 @@ fn get_exercise_stats(
 
 #[tauri::command]
 fn get_data_for_graph(
-    identifier: String,
-    graph_type_str: String,
+    payload: GetDataForGraphPayload,
     state: tauri::State<'_, AppState>,
-) -> Result<Vec<(f64, f64)>, String> {
-    // Vec<(f64, f64)> is inherently serializable
+) -> Result<Vec<(NaiveDate, f64)>, String> {
+    // Return type matches service
     let service = state
         .lock()
         .map_err(|e| format!("Failed to lock state: {}", e))?;
 
-    let graph_type = match graph_type_str.as_str() {
+    let graph_type = match payload.graph_type_str.as_str() {
         "Estimated1RM" => GraphType::Estimated1RM,
         "MaxWeight" => GraphType::MaxWeight,
         "MaxReps" => GraphType::MaxReps,
@@ -346,12 +385,22 @@ fn get_data_for_graph(
         "WorkoutReps" => GraphType::WorkoutReps,
         "WorkoutDuration" => GraphType::WorkoutDuration,
         "WorkoutDistance" => GraphType::WorkoutDistance,
-        _ => return Err(format!("Invalid graph type: {}", graph_type_str)),
+        _ => return Err(format!("Invalid graph type: {}", payload.graph_type_str)),
     };
 
-    // Convert anyhow::Error to String
+    let start_date_filter = payload
+        .start_date
+        .map(|s| parse_naive_date(&s))
+        .transpose()?;
+    let end_date_filter = payload.end_date.map(|s| parse_naive_date(&s)).transpose()?;
+
     service
-        .get_data_for_graph(&identifier, graph_type)
+        .get_data_for_graph(
+            &payload.identifier,
+            graph_type,
+            start_date_filter,
+            end_date_filter,
+        )
         .map_err(|e| e.to_string())
 }
 
@@ -420,6 +469,7 @@ fn main() {
             // Commands list
             get_config,
             save_config,
+            get_workout_dates_for_month,
             set_bodyweight,
             list_workouts,
             add_workout,
@@ -434,8 +484,125 @@ fn main() {
             list_aliases,
             create_alias,
             delete_alias,
-            // Add other registered commands...
+            list_all_muscles,
+            set_units,
+            // set_bodyweight_prompt_enabled,
+            set_streak_interval,
+            set_pb_notification_enabled,
+            set_pb_notify_weight,
+            set_pb_notify_reps,
+            set_pb_notify_duration,
+            set_pb_notify_distance,
+            set_target_bodyweight,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn list_all_muscles(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state for list_all_muscles: {}", e))?;
+    service
+        .list_all_muscles()
+        .map_err(|e| format!("Error fetching all muscles from lib: {}", e))
+}
+
+#[tauri::command]
+fn set_units(payload: SetUnitsPayload, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    let units_enum = match payload.units.to_lowercase().as_str() {
+        "metric" => Units::Metric,
+        "imperial" => Units::Imperial,
+        _ => return Err(format!("Invalid units string: {}", payload.units)),
+    };
+    service.set_units(units_enum).map_err(|e| e.to_string())
+}
+
+// #[tauri::command]
+// fn set_bodyweight_prompt_enabled(
+//     enabled: bool,
+//     state: tauri::State<'_, AppState>,
+// ) -> Result<(), String> {
+//     let mut service = state
+//         .lock()
+//         .map_err(|e| format!("Failed to lock state: {}", e))?;
+//     service
+//         .set_bodyweight_prompt_enabled(enabled)
+//         .map_err(|e| e.to_string())
+// }
+
+#[tauri::command]
+fn set_streak_interval(days: u32, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service.set_streak_interval(days).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_pb_notification_enabled(
+    enabled: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service
+        .set_pb_notification_enabled(enabled)
+        .map_err(|e| e.to_string())
+}
+
+// Individual PB notification type toggles
+#[tauri::command]
+fn set_pb_notify_weight(enabled: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service
+        .set_pb_notify_weight(enabled)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn set_pb_notify_reps(enabled: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service
+        .set_pb_notify_reps(enabled)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn set_pb_notify_duration(enabled: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service
+        .set_pb_notify_duration(enabled)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn set_pb_notify_distance(enabled: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service
+        .set_pb_notify_distance(enabled)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_target_bodyweight(
+    weight: Option<f64>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut service = state
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+    service
+        .set_target_bodyweight(weight)
+        .map_err(|e| e.to_string())
 }

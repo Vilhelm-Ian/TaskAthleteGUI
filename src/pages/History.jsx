@@ -10,7 +10,7 @@ const History = () => {
   return (
     <div class="flex flex-col sm:flex-row h-full gap-6">
        <div class="hidden sm:block sm:w-1/4 lg:w-1/5 flex-shrink-0">
-         <SearchFilterBar />
+        { /*<SearchFilterBar */}
        </div>
 
        <div class="flex-grow">

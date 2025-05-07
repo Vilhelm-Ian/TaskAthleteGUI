@@ -24,7 +24,7 @@ export const BottomNav = ({ currentPath, class: className }) => {
 
   return (
     <nav class={classNames(
-      "fixed bottom-0 left-0 right-0 h-16 bg-bg-light border-t border-gray-200 flex items-stretch justify-around z-50",
+      "fixed bottom-0 left-0 right-0 h-16 bg-primary border-t border-gray-200 flex items-stretch justify-around z-50",
       className
     )}>
       {navItems.map(item => (
