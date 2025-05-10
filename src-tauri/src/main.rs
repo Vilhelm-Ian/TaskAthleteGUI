@@ -99,6 +99,12 @@ struct VolumeFiltersCmdParams {
     pub limit_days: Option<u32>,
 }
 
+#[derive(Deserialize)]
+struct GetPreviousWorkoutDetailsPayload {
+    identifier: String,
+    n: u32,
+}
+
 // --- Helper Functions ---
 fn parse_naive_date(date_str: &str) -> Result<NaiveDate, String> {
     NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
@@ -269,10 +275,14 @@ fn delete_workouts(ids: Vec<i64>, state: tauri::State<'_, AppState>) -> Result<V
 #[tauri::command]
 fn list_exercises(
     type_filter_str: Option<String>,
-    muscle_filter: Option<String>,
+    muscles_filter: Option<Vec<String>>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<ExerciseDefinition>, String> {
     // ExerciseDefinition needs Serialize in lib
+    let muscle_refs: Option<Vec<&str>> = muscles_filter
+        .as_ref()
+        .map(|m| m.iter().map(|s| s.as_str()).collect());
+
     let service = state
         .lock()
         .map_err(|e| format!("Failed to lock state: {}", e))?;
@@ -281,7 +291,7 @@ fn list_exercises(
         .transpose()?;
     // Convert anyhow::Error to String
     service
-        .list_exercises(type_filter, muscle_filter.as_deref())
+        .list_exercises(type_filter, muscle_refs)
         .map_err(|e| e.to_string())
 }
 
@@ -440,6 +450,33 @@ fn delete_alias(alias_name: String, state: tauri::State<'_, AppState>) -> Result
     service.delete_alias(&alias_name).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_previous_workout_details(
+    payload: GetPreviousWorkoutDetailsPayload,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<Workout>, String> {
+    let service = state.lock().map_err(|e| {
+        format!(
+            "Failed to lock state for get_previous_workout_details: {}",
+            e
+        )
+    })?;
+
+    if payload.n == 0 {
+        return Err("n must be greater than 0 for get_previous_workout_details".to_string());
+    }
+
+    // This calls the library function you provided
+    service
+        .list_workouts_for_exercise_on_nth_last_day(&payload.identifier, payload.n)
+        .map_err(|e| {
+            // It's okay if no previous workouts are found, this will likely result in an empty Vec or a specific error.
+            // The frontend will handle an empty Vec gracefully.
+            // If it's a more severe error, it will be propagated.
+            e.to_string()
+        })
+}
+
 // Add more commands for other AppService methods as needed...
 
 // --- Main Function (Keep only ONE) ---
@@ -494,6 +531,7 @@ fn main() {
             set_pb_notify_duration,
             set_pb_notify_distance,
             set_target_bodyweight,
+            get_previous_workout_details,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

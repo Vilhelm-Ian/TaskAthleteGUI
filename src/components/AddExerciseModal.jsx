@@ -1,22 +1,35 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Loader2, AlertTriangle, Search, XCircle, ChevronLeft as BackIcon, PlusCircle } from 'lucide-preact'; // Added PlusCircle
-import CreateExerciseModal from './CreateExerciseModal'; // Import the new modal
+import { X, Loader2, AlertTriangle, Search, XCircle, ChevronLeft as BackIcon, PlusCircle, CheckSquare, Square } from 'lucide-preact'; // Added CheckSquare, Square
+import CreateExerciseModal from './CreateExerciseModal';
+
+const EXERCISE_TYPES = {
+  BODYWEIGHT: 'BodyWeight',
+  RESISTANCE: 'Resistance',
+  CARDIO: 'Cardio',
+};
+const EXERCISE_TYPE_LABELS = {
+  [EXERCISE_TYPES.BODYWEIGHT]: 'Bodyweight',
+  [EXERCISE_TYPES.RESISTANCE]: 'Resistance',
+  [EXERCISE_TYPES.CARDIO]: 'Cardio',
+};
+
 
 const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) => {
-  const [step, setStep] = useState(1); // 1 for selection, 2 for details
+  const [step, setStep] = useState(1);
 
-  // Step 1 state: Exercise Selection
+  // Step 1 state
   const [searchTerm, setSearchTerm] = useState('');
-  const [allExercises, setAllExercises] = useState([]);
-  const [displayedExercises, setDisplayedExercises] = useState([]);
+  const [exercisesToDisplay, setExercisesToDisplay] = useState([]); // Exercises currently shown after all filters
   const [availableMuscles, setAvailableMuscles] = useState([]);
-  const [selectedMuscle, setSelectedMuscle] = useState(null);
+  const [selectedMuscles, setSelectedMuscles] = useState([]); // Changed from selectedMuscle
+  const [selectedExerciseType, setSelectedExerciseType] = useState(null); // New state for exercise type
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [initialExerciseCount, setInitialExerciseCount] = useState(0); // To know if any exercises exist at all
 
-  // Step 2 state: Log Details
+  // Step 2 state
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [logData, setLogData] = useState({ reps: '', weight: '', duration: '', distance: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,38 +37,63 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
   const [userBodyweight, setUserBodyweight] = useState(null);
   const [userBodyweightUnit, setUserBodyweightUnit] = useState('kg');
 
-  // State for CreateExerciseModal
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
 
-  const fetchAllExercisesAndMuscles = useCallback(async (showLoading = true) => {
-    if (showLoading) setLoading(true);
+  const fetchInitialData = useCallback(async () => {
+    setLoading(true);
     setError(null);
     try {
-      const [exercisesData, musclesData, configData] = await Promise.all([
-        invoke('list_exercises', { typeFilterStr: null, muscleFilter: null }),
+      const [musclesData, configData, allExercisesInitial] = await Promise.all([
         invoke('list_all_muscles'),
-        invoke('get_config')
+        invoke('get_config'),
+        invoke('list_exercises', { typeFilterStr: null, muscleFilter: null }) // Fetch all initially for count
       ]);
-      setAllExercises(exercisesData || []);
       setAvailableMuscles(musclesData || []);
+      setInitialExerciseCount(allExercisesInitial ? allExercisesInitial.length : 0);
 
       if (configData) {
         if (configData.bodyweight != null) {
           setUserBodyweight(parseFloat(configData.bodyweight));
-        } else {
-          console.warn("User bodyweight not found in config.");
         }
         if (configData.units && configData.units.weight) {
             setUserBodyweightUnit(configData.units.weight);
         }
       }
     } catch (err) {
-      console.error("Modal fetch error:", err);
+      console.error("Modal initial data fetch error:", err);
       setError(typeof err === 'string' ? err : (err.message || "Failed to load initial data."));
-      setAllExercises([]);
       setAvailableMuscles([]);
+      setInitialExerciseCount(0);
     } finally {
-      if (showLoading) setLoading(false);
+      // Loading will be set to false after the first fetchExercises call
+    }
+  }, []);
+
+  const fetchExercises = useCallback(async (type, muscles, currentSearchTerm) => {
+    setLoading(true);
+    setError(null);
+    // console.log("Fetching exercises with Type:", type, "Muscles:", muscles, "Search:", currentSearchTerm);
+    try {
+      // Backend handles type and muscle filtering. Search term is applied on frontend after fetch.
+      let fetched = await invoke('list_exercises', {
+        typeFilterStr: type,
+        musclesFilter: muscles.length > 0 ? muscles : null,
+      });
+      
+      if (currentSearchTerm) {
+        const lowerSearchTerm = currentSearchTerm.toLowerCase().trim();
+        if (lowerSearchTerm) {
+            fetched = (fetched || []).filter(ex => ex.name.toLowerCase().includes(lowerSearchTerm));
+        }
+      }
+      setExercisesToDisplay(fetched || []);
+
+    } catch (err) {
+      console.error("Modal fetch exercises error:", err);
+      setError(typeof err === 'string' ? err : (err.message || "Failed to load exercises."));
+      setExercisesToDisplay([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -64,49 +102,70 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
     if (isOpen) {
       setStep(1);
       setSearchTerm('');
-      setSelectedMuscle(null);
+      setSelectedMuscles([]);
+      setSelectedExerciseType(null);
       setSelectedExercise(null);
       setLogData({ reps: '', weight: '', duration: '', distance: '' });
-      setDisplayedExercises([]);
+      setExercisesToDisplay([]); // Clear immediately
       setUserBodyweight(null);
-      fetchAllExercisesAndMuscles();
+      fetchInitialData(); // Fetches muscles, config, and initial full exercise count
+      // fetchExercises will be triggered by the next useEffect
     }
-  }, [isOpen, fetchAllExercisesAndMuscles]);
+  }, [isOpen, fetchInitialData]);
 
+
+  // Effect to fetch/filter exercises when filters or search term change
   useEffect(() => {
-    if (!isOpen || loading || step !== 1) return;
-
-    let filtered = [];
-    if (searchTerm) {
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      filtered = allExercises.filter(ex =>
-        ex.name.toLowerCase().includes(lowerSearchTerm)
-      );
-    } else if (selectedMuscle) {
-      const lowerSelectedMuscle = selectedMuscle.toLowerCase();
-      filtered = allExercises.filter(ex =>
-        ex.muscles_targeted && ex.muscles_targeted.toLowerCase().split(',').map(m => m.trim()).includes(lowerSelectedMuscle)
-      );
-    } else {
-       filtered = [];
+    if (isOpen && step === 1) {
+      // Debounce or delay fetching slightly if searchTerm is changing rapidly? For now, direct fetch.
+      const timeoutId = setTimeout(() => { // Simple debounce for search term
+        fetchExercises(selectedExerciseType, selectedMuscles, searchTerm);
+      }, searchTerm ? 300 : 0); // Fetch immediately if not search term, else debounce
+      
+      return () => clearTimeout(timeoutId);
+    } else if (!isOpen) {
+      setExercisesToDisplay([]); // Clear when modal closes
     }
-    setDisplayedExercises(filtered);
-  }, [searchTerm, selectedMuscle, allExercises, isOpen, loading, step]);
+  }, [isOpen, step, selectedExerciseType, selectedMuscles, searchTerm, fetchExercises]);
+
 
   const handleMuscleClick = (muscle) => {
-    setSearchTerm('');
-    if (selectedMuscle === muscle) {
-      setSelectedMuscle(null);
-    } else {
-      setSelectedMuscle(muscle);
-    }
+    // setSearchTerm(''); // Clear search when muscle filter changes
+    setSelectedMuscles(prev =>
+      prev.includes(muscle) ? prev.filter(m => m !== muscle) : [...prev, muscle]
+    );
   };
 
-  const handleExerciseSelect = (exercise) => {
+  const handleExerciseTypeClick = (type) => {
+    // setSearchTerm(''); // Clear search when type filter changes
+    setSelectedExerciseType(prev => (prev === type ? null : type));
+  };
+
+  const handleExerciseSelect = async (exercise) => {
     setSelectedExercise(exercise);
-    setLogData({ reps: '', weight: '', duration: '', distance: '' });
+    const initialLogData = { reps: '', weight: '', duration: '', distance: '' };
+    setLogData(initialLogData);
     setStep(2);
     setError(null);
+
+    if (exercise && exercise.name) {
+      try {
+        const previousWorkoutsOnLastDay = await invoke('get_previous_workout_details', {
+          payload: { identifier: exercise.name, n: 1 }
+        });
+        if (previousWorkoutsOnLastDay && previousWorkoutsOnLastDay.length > 0) {
+          const prevWorkout = previousWorkoutsOnLastDay[0];
+          const newLogData = { ...initialLogData };
+          if (exercise.log_reps && prevWorkout.reps != null) newLogData.reps = prevWorkout.reps.toString();
+          if (exercise.log_weight && prevWorkout.weight != null) newLogData.weight = prevWorkout.weight.toString();
+          if (exercise.log_duration && prevWorkout.duration != null) newLogData.duration = prevWorkout.duration.toString();
+          if (exercise.log_distance && prevWorkout.distance != null) newLogData.distance = prevWorkout.distance.toString();
+          setLogData(newLogData);
+        }
+      } catch (err) {
+        console.warn(`Could not fetch previous workout data for '${exercise.name}':`, err);
+      }
+    }
   };
 
   const handleLogDataChange = (e) => {
@@ -132,30 +191,28 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
 
     if (!hasMetrics) {
         let requiredFieldsMsg = "Please enter at least one value for the fields enabled: ";
-        if(selectedExercise.log_reps) requiredFieldsMsg += "Reps ";
-        if(selectedExercise.log_weight) requiredFieldsMsg += "Weight ";
-        if(selectedExercise.log_duration) requiredFieldsMsg += "Duration ";
-        if(selectedExercise.log_distance) requiredFieldsMsg += "Distance ";
-        setError(requiredFieldsMsg.trim().replace(/,$/, '.') + ".");
+        if(selectedExercise.log_reps) requiredFieldsMsg += "Reps, ";
+        if(selectedExercise.log_weight) requiredFieldsMsg += "Weight, ";
+        if(selectedExercise.log_duration) requiredFieldsMsg += "Duration, ";
+        if(selectedExercise.log_distance) requiredFieldsMsg += "Distance, ";
+        setError(requiredFieldsMsg.trim().replace(/,$/, '') + ".");
         return;
     }
 
     setIsSubmitting(true);
     setError(null);
-
     const workoutDate = new Date(currentDateKey + "T12:00:00.000Z").toISOString();
-
     const workoutPayload = {
       exercise_identifier: selectedExercise.name,
       date: workoutDate,
-      sets: 1, // Assuming 1 set for simplicity in this modal. Adjust if needed.
+      sets: 1, // Assuming 1 set for this simplified modal
       reps: selectedExercise.log_reps && logData.reps ? parseInt(logData.reps) : undefined,
       weight: selectedExercise.log_weight && logData.weight ? parseFloat(logData.weight) : undefined,
       duration: selectedExercise.log_duration && logData.duration ? parseInt(logData.duration) : undefined,
       distance: selectedExercise.log_distance && logData.distance ? parseFloat(logData.distance) : undefined,
     };
 
-    if (selectedExercise.type_ === 'BodyWeight') {
+    if (selectedExercise.type_ === EXERCISE_TYPES.BODYWEIGHT) {
       if (userBodyweight != null && !isNaN(userBodyweight)) {
         workoutPayload.bodyweight_to_use = userBodyweight;
       } else {
@@ -177,21 +234,24 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
     }
   };
 
-  const handleOpenCreateExerciseModal = () => {
-    setIsCreateExerciseModalOpen(true);
-  };
+  const handleOpenCreateExerciseModal = () => setIsCreateExerciseModalOpen(true);
 
   const handleExerciseCreated = async (newExerciseName) => {
     setIsCreateExerciseModalOpen(false);
-    await fetchAllExercisesAndMuscles(false); 
+    await fetchInitialData(); // Re-fetch initial counts and muscles
+    // New exercise will be picked up by fetchExercises due to searchTerm change or existing filters
     if (newExerciseName) {
-        setSearchTerm(newExerciseName);
-        setSelectedMuscle(null); 
+        setSearchTerm(newExerciseName); // This will trigger fetchExercises
+        setSelectedMuscles([]);
+        setSelectedExerciseType(null);
+    } else {
+        fetchExercises(selectedExerciseType, selectedMuscles, searchTerm); // Re-fetch with current filters
     }
   };
 
-
   if (!isOpen) return null;
+
+  const noFiltersActive = !searchTerm.trim() && selectedMuscles.length === 0 && !selectedExerciseType;
 
   return (
     <>
@@ -203,7 +263,7 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
                 <span className="flex items-center">
                   <button
                     type="button"
-                    onClick={() => { setStep(1); setError(null); }}
+                    onClick={() => { setStep(1); setError(null); fetchExercises(selectedExerciseType, selectedMuscles, searchTerm);}} // Re-fetch on back
                     className="mr-3 p-1.5 rounded-full text-subtle hover:bg-surface-alt hover:text-default transition-colors"
                     aria-label="Back to exercise selection"
                   >
@@ -239,7 +299,7 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
                         </div>
                         <input
                         type="text"
-                        placeholder="Search exercises by name..."
+                        placeholder="Search exercises..."
                         value={searchTerm}
                         onInput={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-10 py-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm transition-shadow"
@@ -264,72 +324,100 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
                     </button>
                 </div>
 
+                {/* Exercise Type Filters */}
+                <div>
+                  <p className="text-xs text-muted mb-2 font-medium uppercase tracking-wider">Filter by type:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.values(EXERCISE_TYPES).map(typeKey => (
+                      <button
+                        key={typeKey}
+                        onClick={() => handleExerciseTypeClick(typeKey)}
+                        className={`px-3.5 py-1.5 text-sm rounded-full border-2 transition-all duration-150 ease-in-out font-medium
+                          ${selectedExerciseType === typeKey
+                            ? 'bg-accent-emphasis text-on-accent border-accent-emphasis shadow-md hover:bg-accent-emphasis-hover'
+                            : 'bg-app text-default border-strong hover:border-accent-emphasis hover:text-accent-emphasis'}`}
+                      >
+                        {EXERCISE_TYPE_LABELS[typeKey]}
+                      </button>
+                    ))}
+                     {selectedExerciseType && (
+                        <button
+                            onClick={() => handleExerciseTypeClick(selectedExerciseType)} // Click again to clear
+                            className="px-3 py-1.5 text-sm rounded-full border-2 border-strong bg-surface-alt text-muted hover:bg-active hover:border-strong flex items-center gap-1"
+                            title="Clear type filter"
+                        >
+                            <XCircle size={14} /> Clear Type
+                        </button>
+                    )}
+                  </div>
+                </div>
 
-                {!searchTerm && !loading && availableMuscles.length > 0 && (
+                {/* Muscle Group Filters */}
+                {availableMuscles.length > 0 && (
                   <div>
-                    <p className="text-xs text-muted mb-2 font-medium uppercase tracking-wider">Or filter by muscle group:</p>
+                    <p className="text-xs text-muted mb-2 font-medium uppercase tracking-wider">Filter by muscle group:</p>
                     <div className="flex flex-wrap gap-2">
                       {availableMuscles.map(muscle => (
                         <button
                           key={muscle}
                           onClick={() => handleMuscleClick(muscle)}
                           className={`px-3.5 py-1.5 text-sm rounded-full border-2 transition-all duration-150 ease-in-out font-medium
-                            ${selectedMuscle === muscle
+                            ${selectedMuscles.includes(muscle)
                               ? 'bg-accent-emphasis text-on-accent border-accent-emphasis shadow-md hover:bg-accent-emphasis-hover'
                               : 'bg-app text-default border-strong hover:border-accent-emphasis hover:text-accent-emphasis'}`}
                         >
                           {muscle}
                         </button>
                       ))}
-                      {selectedMuscle && (
+                      {selectedMuscles.length > 0 && (
                           <button
-                              onClick={() => setSelectedMuscle(null)}
+                              onClick={() => setSelectedMuscles([])}
                               className="px-3 py-1.5 text-sm rounded-full border-2 border-strong bg-surface-alt text-muted hover:bg-active hover:border-strong flex items-center gap-1"
-                              title="Clear muscle filter"
+                              title="Clear all muscle filters"
                           >
-                              <XCircle size={14} /> Clear Filter
+                              <XCircle size={14} /> Clear Muscles
                           </button>
                       )}
                     </div>
                   </div>
                 )}
 
+                {/* Exercise List / Messages */}
                 {loading && <div className="flex justify-center py-8"><Loader2 size={36} className="animate-spin text-accent-emphasis" /></div>}
 
-                {!loading && displayedExercises.length > 0 && (
-                  <div className="max-h-[calc(90vh-320px)] sm:max-h-[calc(90vh-300px)] overflow-y-auto space-y-2 pr-1 -mr-1 mt-3">
-                    {displayedExercises.map(exercise => (
+                {!loading && exercisesToDisplay.length > 0 && (
+                  <div className="max-h-[calc(90vh-380px)] sm:max-h-[calc(90vh-360px)] overflow-y-auto space-y-2 pr-1 -mr-1 mt-3">
+                    {exercisesToDisplay.map(exercise => (
                       <button
-                        key={exercise.id || exercise.name} 
+                        key={exercise.id || exercise.name}
                         onClick={() => handleExerciseSelect(exercise)}
                         className="w-full text-left p-3.5 bg-app hover:bg-accent-subtle-bg border border-subtle rounded-lg shadow-sm transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent-emphasis/50 focus:border-accent-emphasis"
                       >
                         <p className="font-semibold text-default text-md">{exercise.name}</p>
-                        {exercise.muscles_targeted && <p className="text-xs text-accent-emphasis font-medium mt-0.5">{exercise.muscles_targeted}</p>}
-                        {exercise.type_ && <p className="text-xs text-muted mt-0.5">Type: {exercise.type_}</p>}
+                        {exercise.muscles && <p className="text-xs text-accent-emphasis font-medium mt-0.5">{exercise.muscles}</p>}
+                        {exercise.type_ && <p className="text-xs text-muted mt-0.5">Type: {EXERCISE_TYPE_LABELS[exercise.type_] || exercise.type_}</p>}
                       </button>
                     ))}
                   </div>
                 )}
-
-                {!loading && (searchTerm || selectedMuscle) && displayedExercises.length === 0 && (
-                  <p className="text-center text-muted py-6">No exercises found matching your criteria.</p>
-                )}
-                {!loading && !searchTerm && !selectedMuscle && availableMuscles.length > 0 && (
-                  <p className="text-center text-muted py-6">Search for an exercise or select a muscle group above to begin.</p>
-                )}
-                {!loading && !searchTerm && !selectedMuscle && availableMuscles.length === 0 && !allExercises.length && (
-                  <p className="text-center text-muted py-6">No exercises defined yet. Try creating one!</p>
-                )}
-                 {!loading && !searchTerm && !selectedMuscle && availableMuscles.length === 0 && allExercises.length > 0 && (
-                  <p className="text-center text-muted py-6">Search for an exercise. No muscle groups found to filter by.</p>
+                
+                {!loading && exercisesToDisplay.length === 0 && (
+                  noFiltersActive ? (
+                    initialExerciseCount === 0 ? (
+                      <p className="text-center text-muted py-6">No exercises defined yet. Try creating one!</p>
+                    ) : (
+                      <p className="text-center text-muted py-6">Search for an exercise or apply filters to see results.</p>
+                    )
+                  ) : (
+                    <p className="text-center text-muted py-6">No exercises found matching your criteria.</p>
+                  )
                 )}
               </div>
             )}
 
             {step === 2 && selectedExercise && (
               <form onSubmit={handleSubmitWorkout} className="space-y-4 sm:space-y-5">
-                {selectedExercise.type_ === 'BodyWeight' && (
+                {selectedExercise.type_ === EXERCISE_TYPES.BODYWEIGHT && (
                   <div className="mb-1 p-2.5 bg-accent-subtle-bg border border-accent-emphasis border-opacity-30 rounded-lg text-sm text-accent-emphasis shadow-sm">
                     This is a bodyweight exercise.
                     {userBodyweight != null ?
@@ -341,57 +429,39 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
                 {selectedExercise.log_reps && (
                   <div>
                     <label htmlFor="reps" className="block text-sm font-medium text-default mb-1">Reps</label>
-                    <input
-                      type="number" name="reps" id="reps" value={logData.reps} onInput={handleLogDataChange}
-                      placeholder="e.g., 10" min="0"
-                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-                    />
+                    <input type="number" name="reps" id="reps" value={logData.reps} onInput={handleLogDataChange} placeholder="e.g., 10" min="0"
+                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm" />
                   </div>
                 )}
                 {selectedExercise.log_weight && (
                   <div>
                     <label htmlFor="weight" className="block text-sm font-medium text-default mb-1">Weight <span className="text-xs text-muted">(e.g., {userBodyweightUnit || 'lbs, kg'})</span></label>
-                    <input
-                      type="number" name="weight" id="weight" value={logData.weight} onInput={handleLogDataChange}
-                      placeholder="e.g., 50.5" step="0.1" min="0"
-                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-                    />
+                    <input type="number" name="weight" id="weight" value={logData.weight} onInput={handleLogDataChange} placeholder="e.g., 50.5" step="0.1" min="0"
+                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm" />
                   </div>
                 )}
                 {selectedExercise.log_duration && (
                   <div>
                     <label htmlFor="duration" className="block text-sm font-medium text-default mb-1">Duration <span className="text-xs text-muted">(minutes)</span></label>
-                    <input
-                      type="number" name="duration" id="duration" value={logData.duration} onInput={handleLogDataChange}
-                      placeholder="e.g., 30" min="0"
-                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-                    />
+                    <input type="number" name="duration" id="duration" value={logData.duration} onInput={handleLogDataChange} placeholder="e.g., 30" min="0"
+                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm" />
                   </div>
                 )}
                 {selectedExercise.log_distance && (
                   <div>
                     <label htmlFor="distance" className="block text-sm font-medium text-default mb-1">Distance <span className="text-xs text-muted">(e.g., km, miles)</span></label>
-                    <input
-                      type="number" name="distance" id="distance" value={logData.distance} onInput={handleLogDataChange}
-                      placeholder="e.g., 5.2" step="0.01" min="0"
-                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-                    />
+                    <input type="number" name="distance" id="distance" value={logData.distance} onInput={handleLogDataChange} placeholder="e.g., 5.2" step="0.01" min="0"
+                      className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm" />
                   </div>
                 )}
 
                 <div className="flex items-center justify-end gap-3 pt-3 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => { setStep(1); setError(null); }}
-                    className="px-5 py-2 text-sm font-medium text-default bg-app hover:bg-surface-alt border border-strong rounded-lg shadow-sm transition-colors"
-                  >
+                  <button type="button" onClick={() => { setStep(1); setError(null); fetchExercises(selectedExerciseType, selectedMuscles, searchTerm); }}
+                    className="px-5 py-2 text-sm font-medium text-default bg-app hover:bg-surface-alt border border-strong rounded-lg shadow-sm transition-colors">
                     Back
                   </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !selectedExercise}
-                    className="px-6 py-2.5 text-sm font-semibold text-on-accent bg-accent-emphasis hover:bg-accent-emphasis-hover rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
-                  >
+                  <button type="submit" disabled={isSubmitting || !selectedExercise}
+                    className="px-6 py-2.5 text-sm font-semibold text-on-accent bg-accent-emphasis hover:bg-accent-emphasis-hover rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]">
                     {isSubmitting ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
                     Log Workout
                   </button>
@@ -406,7 +476,7 @@ const AddExerciseModal = ({ isOpen, onClose, currentDateKey, onWorkoutAdded }) =
         isOpen={isCreateExerciseModalOpen}
         onClose={() => setIsCreateExerciseModalOpen(false)}
         onExerciseCreated={handleExerciseCreated}
-        availableMuscles={availableMuscles} 
+        availableMuscles={availableMuscles}
       />
     </>
   );
