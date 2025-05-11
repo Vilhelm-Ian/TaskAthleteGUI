@@ -7,7 +7,6 @@ import DatePicker from '../components/DatePicker';
 import AddExerciseModal from '../components/AddExerciseModal';
 
 const processBackendWorkouts = (backendWorkouts) => {
-  // ... (this function remains the same as the previous correct version)
   if (!backendWorkouts || backendWorkouts.length === 0) return [];
   const exerciseGroups = {};
   backendWorkouts.forEach(workout => {
@@ -17,22 +16,36 @@ const processBackendWorkouts = (backendWorkouts) => {
       return;
     }
     if (!exerciseGroups[exerciseName]) {
-      exerciseGroups[exerciseName] = { 
-        name: exerciseName, 
+      exerciseGroups[exerciseName] = {
+        name: exerciseName,
         logEntries: [],
       };
     }
     const metrics = {};
     if (workout.reps != null) metrics.reps = workout.reps;
     if (workout.weight != null) metrics.weight = workout.weight;
-    if (workout.duration_minutes != null) metrics.duration = workout.duration_minutes; 
+    if (workout.duration_minutes != null) metrics.duration = workout.duration_minutes;
     if (workout.distance != null) metrics.distance = workout.distance;
-    
-    exerciseGroups[exerciseName].logEntries.push({
-      id: workout.id, 
-      metrics: metrics,
-      exerciseName: exerciseName, // Keep exercise name for edit pre-selection
-    });
+
+    // Handle multiple sets from a single backend workout entry
+    // workout.sets comes from the backend (e.g., Option<i64> in Rust, so can be null)
+    const numberOfSets = (workout.sets != null && workout.sets > 0) ? Number(workout.sets) : 1;
+
+    for (let i = 0; i < numberOfSets; i++) {
+      exerciseGroups[exerciseName].logEntries.push({
+        // uiId: Unique ID for UI rendering (React key).
+        // All "exploded" sets from the same DB row will have different uiId.
+        uiId: `${workout.id}-${i}`,
+        // dbId: The original database ID.
+        // All "exploded" sets from the same DB row will share this dbId for backend operations.
+        dbId: workout.id,
+        metrics: { ...metrics }, // Clone metrics (they are the same for each expanded set from this row)
+        exerciseName: exerciseName, // Keep exercise name for edit pre-selection
+        // Optional: for potential display like "Set 1 of 3"
+        // setDisplayNumber: i + 1,
+        // totalSetsInParentRecord: numberOfSets,
+      });
+    }
   });
   return Object.values(exerciseGroups).filter(group => group.logEntries && group.logEntries.length > 0);
 };
@@ -48,18 +61,18 @@ const LogWorkout = () => {
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
-  
+
   const [pbNotification, setPbNotification] = useState(null);
   const [userConfigUnits, setUserConfigUnits] = useState('metric');
 
   const [allExerciseDefinitionsMap, setAllExerciseDefinitionsMap] = useState(new Map());
   const [preSelectedExerciseForModal, setPreSelectedExerciseForModal] = useState(null);
   const [initialLogDataForModal, setInitialLogDataForModal] = useState(null);
-  const [editingWorkoutLogId, setEditingWorkoutLogId] = useState(null); // For edit mode
+  const [editingWorkoutLogId, setEditingWorkoutLogId] = useState(null); // Stores the dbId for edit mode
 
-  const dateFormatOptions = { /* ... */ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  const dateFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
 
-  useEffect(() => { /* fetchAllDefs - remains same */ 
+  useEffect(() => { /* fetchAllDefs - remains same */
     const fetchAllDefs = async () => {
       try {
         const defs = await invoke('list_exercises', { typeFilterStr: null, muscleFilter: null });
@@ -70,7 +83,7 @@ const LogWorkout = () => {
     };
     fetchAllDefs();
   }, []);
-  useEffect(() => { /* fetchUserConfig - remains same */ 
+  useEffect(() => { /* fetchUserConfig - remains same */
     const fetchUserConfig = async () => {
       try {
         const config = await invoke('get_config');
@@ -79,13 +92,13 @@ const LogWorkout = () => {
     };
     fetchUserConfig();
   }, []);
-  const changeDate = (days) => { /* ... */ 
+  const changeDate = (days) => { /* ... */
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() + days);
     setCurrentDate(newDate);
     setShowDatePicker(false);
   };
-  const fetchWorkoutsForCurrentDate = useCallback(async () => { /* ... */ 
+  const fetchWorkoutsForCurrentDate = useCallback(async () => { /* ... */
     if (!dateKey) return;
     setLoading(true); setError(null); setWorkoutData([]);
     try {
@@ -97,39 +110,38 @@ const LogWorkout = () => {
       console.error("Fetch workouts error:", err); setError(errorMessage);
     } finally { setLoading(false); }
   }, [dateKey]);
-  useEffect(() => { /* dateKey update - remains same */ 
+  useEffect(() => { /* dateKey update - remains same */
     setFormattedDate(currentDate.toLocaleDateString(undefined, dateFormatOptions));
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
     const day = String(currentDate.getDate()).padStart(2, '0');
     setDateKey(`${year}-${month}-${day}`);
   }, [currentDate]);
-  useEffect(() => { /* fetchWorkoutsForCurrentDate call - remains same */ 
+  useEffect(() => { /* fetchWorkoutsForCurrentDate call - remains same */
     fetchWorkoutsForCurrentDate();
   }, [fetchWorkoutsForCurrentDate]);
 
-  // Renamed from handleWorkoutAdded to handleModalActionCompleted
   const handleModalActionCompleted = (pbInfo) => {
-    fetchWorkoutsForCurrentDate(); // Refresh list after add or edit
-    setEditingWorkoutLogId(null); // Clear edit mode
-    
-    if (pbInfo) { // PB info only comes from 'add_workout'
+    fetchWorkoutsForCurrentDate();
+    setEditingWorkoutLogId(null);
+
+    if (pbInfo) {
       const anyPbAchieved = pbInfo.weight?.achieved || pbInfo.reps?.achieved || pbInfo.duration?.achieved || pbInfo.distance?.achieved;
       if (anyPbAchieved) setPbNotification(pbInfo);
       else setPbNotification(null);
     } else {
-      setPbNotification(null); // Clear if no PB info (e.g., after an edit)
+      setPbNotification(null);
     }
   };
 
-  const fetchWorkoutDatesForCalendarMonth = useCallback(async (year, month_one_indexed) => { /* ... */ 
+  const fetchWorkoutDatesForCalendarMonth = useCallback(async (year, month_one_indexed) => { /* ... */
     try {
       const datesArray = await invoke('get_workout_dates_for_month', { query: { year: year, month: month_one_indexed } });
       return datesArray || [];
     } catch (err) { console.error("LogWorkout: Failed to fetch workout dates:", err); return []; }
   }, []);
   const handleDateSelectFromPicker = (newDate) => { /* ... */ setCurrentDate(newDate); setShowDatePicker(false); };
-  const formatPbValue = (value, type) => { /* ... (remains same) */ 
+  const formatPbValue = (value, type) => { /* ... (remains same) */
     if (value == null) return 'N/A';
     switch (type) {
       case 'weight': return `${value.toFixed(1)} ${userConfigUnits === 'imperial' ? 'lbs' : 'kg'}`;
@@ -143,7 +155,7 @@ const LogWorkout = () => {
   const handleOpenAddExerciseModal = () => {
     setPreSelectedExerciseForModal(null);
     setInitialLogDataForModal(null);
-    setEditingWorkoutLogId(null); // Ensure not in edit mode
+    setEditingWorkoutLogId(null);
     setShowAddExerciseModal(true);
   };
 
@@ -151,7 +163,7 @@ const LogWorkout = () => {
     setShowAddExerciseModal(false);
     setPreSelectedExerciseForModal(null);
     setInitialLogDataForModal(null);
-    setEditingWorkoutLogId(null); // Clear edit mode on close
+    setEditingWorkoutLogId(null);
   };
 
   const handleOpenAddSetModal = useCallback((exerciseName, metricsToCopy) => {
@@ -165,7 +177,7 @@ const LogWorkout = () => {
         distance: metricsToCopy.distance?.toString() || ''
       };
       setInitialLogDataForModal(modalLogData);
-      setEditingWorkoutLogId(null); // Ensure not in edit mode
+      setEditingWorkoutLogId(null);
       setShowAddExerciseModal(true);
     } else {
       console.warn(`Def for "${exerciseName}" not found.`);
@@ -173,36 +185,39 @@ const LogWorkout = () => {
     }
   }, [allExerciseDefinitionsMap]);
 
-  // New handler for opening the modal in edit mode
   const handleOpenEditSetModal = useCallback((logEntryToEdit) => {
-    const exerciseName = logEntryToEdit.exerciseName; // We stored this in processBackendWorkouts
+    // logEntryToEdit is an object like: { uiId: "...", dbId: original_db_id, metrics: {...}, exerciseName: "..." }
+    const exerciseName = logEntryToEdit.exerciseName;
     const definition = allExerciseDefinitionsMap.get(exerciseName);
 
     if (definition) {
-      setPreSelectedExerciseForModal(definition); // The ExerciseDefinition object
-      const modalLogData = { // Pre-fill with the log entry's current metrics
+      setPreSelectedExerciseForModal(definition);
+      const modalLogData = {
         reps: logEntryToEdit.metrics.reps?.toString() || '',
         weight: logEntryToEdit.metrics.weight?.toString() || '',
         duration: logEntryToEdit.metrics.duration?.toString() || '',
         distance: logEntryToEdit.metrics.distance?.toString() || ''
       };
       setInitialLogDataForModal(modalLogData);
-      setEditingWorkoutLogId(logEntryToEdit.id); // Set the ID of the log being edited
+      setEditingWorkoutLogId(logEntryToEdit.dbId); // Use dbId for editing the backend record
       setShowAddExerciseModal(true);
     } else {
       console.error(`Cannot edit: Exercise definition for "${exerciseName}" not found.`);
-      // Optionally show an error to the user
     }
   }, [allExerciseDefinitionsMap]);
 
 
-  const handleDeleteWorkoutLogEntry = async (logEntryId) => { /* ... (remains same) */ 
-    if (!logEntryId) return;
+  const handleDeleteWorkoutLogEntry = async (logEntryDbId) => { // Parameter is dbId
+    if (!logEntryDbId) return;
     try {
       setLoading(true);
-      await invoke('delete_workouts', { ids: [logEntryId] });
-      fetchWorkoutsForCurrentDate();
+      // Deleting any "exploded" set deletes the original backend record.
+      await invoke('delete_workouts', { ids: [logEntryDbId] });
+      fetchWorkoutsForCurrentDate(); // Refresh the list
     } catch (err) { console.error("Failed to delete log entry:", err); setError(typeof err === 'string' ? err : (err.message || "Failed to delete entry.")); }
+    finally {
+      // setLoading(false); // fetchWorkoutsForCurrentDate will handle its own loading state
+    }
   };
 
   return (
@@ -226,12 +241,12 @@ const LogWorkout = () => {
           ) : workoutData.length > 0 ? (
             <div className="space-y-6 sm:space-y-8">
               {workoutData.map((exerciseGroup) => (
-                <ExerciseCard 
-                  key={exerciseGroup.name} 
-                  exerciseGroup={exerciseGroup} 
+                <ExerciseCard
+                  key={exerciseGroup.name}
+                  exerciseGroup={exerciseGroup}
                   userConfigUnits={userConfigUnits}
                   onOpenAddSetModal={handleOpenAddSetModal}
-                  onOpenEditSetModal={handleOpenEditSetModal} // Pass new handler
+                  onOpenEditSetModal={handleOpenEditSetModal}
                   onDeleteWorkoutLogEntry={handleDeleteWorkoutLogEntry}
                 />
               ))}
@@ -245,10 +260,10 @@ const LogWorkout = () => {
         isOpen={showAddExerciseModal}
         onClose={handleCloseAddExerciseModal}
         currentDateKey={dateKey}
-        onActionCompleted={handleModalActionCompleted} // Use renamed prop
+        onActionCompleted={handleModalActionCompleted}
         preSelectedExercise={preSelectedExerciseForModal}
         initialLogData={initialLogDataForModal}
-        editingWorkoutLogId={editingWorkoutLogId} // Pass editing ID
+        editingWorkoutLogId={editingWorkoutLogId} // This is dbId
       />
 
       {/* PB Notification Toast (remains same) */}
@@ -257,9 +272,9 @@ const LogWorkout = () => {
   );
 };
 
-// SetItem: Add Edit button and pass onEdit handler
 const SetItem = ({ logEntry, index, userConfigUnits, onEdit, onDelete }) => (
-  <div className="bg-surface-alt p-3 rounded-lg border border-subtle flex items-center justify-between gap-x-2"> {/* Use gap-x-2 for horizontal spacing */}
+  // logEntry is now an object like { uiId, dbId, metrics, exerciseName }
+  <div className="bg-surface-alt p-3 rounded-lg border border-subtle flex items-center justify-between gap-x-2">
     <div className="flex flex-wrap gap-2 sm:gap-3 items-stretch flex-grow">
       {Object.keys(logEntry.metrics).length === 0 ? (
         <p className="text-sm text-muted italic flex-grow">Set logged (no specific metrics).</p>
@@ -272,17 +287,16 @@ const SetItem = ({ logEntry, index, userConfigUnits, onEdit, onDelete }) => (
         </>
       )}
     </div>
-    {/* Action buttons container */}
     <div class="flex items-center gap-1 flex-shrink-0">
         <button
-          onClick={() => onEdit(logEntry)} // Pass the whole logEntry
+          onClick={() => onEdit(logEntry)} // Pass the whole logEntry, onEdit handler will use logEntry.dbId
           title="Edit this set"
           className="p-1.5 text-accent-subtle hover:text-accent-emphasis hover:bg-hover rounded-full transition-colors"
         >
           <Edit3 size={18} />
         </button>
         <button
-          onClick={() => onDelete(logEntry.id)}
+          onClick={() => onDelete(logEntry.dbId)} // Pass dbId for deletion
           title="Delete this set"
           className="p-1.5 text-accent-destructive hover:text-accent-destructive-hover hover:bg-hover rounded-full transition-colors"
         >
@@ -292,10 +306,9 @@ const SetItem = ({ logEntry, index, userConfigUnits, onEdit, onDelete }) => (
   </div>
 );
 
-// ExerciseCard: Pass onOpenEditSetModal to SetItem
 const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpenEditSetModal, onDeleteWorkoutLogEntry }) => {
-  const lastLogEntryMetrics = exerciseGroup.logEntries.length > 0 
-    ? exerciseGroup.logEntries[exerciseGroup.logEntries.length - 1].metrics 
+  const lastLogEntryMetrics = exerciseGroup.logEntries.length > 0
+    ? exerciseGroup.logEntries[exerciseGroup.logEntries.length - 1].metrics
     : {};
 
   return (
@@ -309,14 +322,14 @@ const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpe
         </div>
         {exerciseGroup.logEntries && exerciseGroup.logEntries.length > 0 ? (
           <div className="space-y-3">
-            {exerciseGroup.logEntries.map((logEntry, idx) => (
+            {exerciseGroup.logEntries.map((logEntry, idx) => ( // logEntry is { uiId, dbId, ... }
               <SetItem
-                key={logEntry.id}
+                key={logEntry.uiId} // Use uiId for React key
                 logEntry={logEntry}
                 index={idx}
                 userConfigUnits={userConfigUnits}
-                onEdit={onOpenEditSetModal} // Pass the edit handler
-                onDelete={onDeleteWorkoutLogEntry}
+                onEdit={onOpenEditSetModal} // onOpenEditSetModal expects the full logEntry
+                onDelete={onDeleteWorkoutLogEntry} // onDeleteWorkoutLogEntry expects the dbId
               />
             ))}
           </div>
