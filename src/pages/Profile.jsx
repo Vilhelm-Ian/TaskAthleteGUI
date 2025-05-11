@@ -109,20 +109,7 @@ const Profile = () => {
 
   return (
     <div class="flex flex-col sm:flex-row h-full gap-6 p-4 sm:p-6 bg-primary">
-        <div class="sm:w-1/3 lg:w-1/4 text-center sm:text-left bg-secondary p-6 rounded-md border border-primary sm:self-start">
-            <h2 class="text-xl font-semibold text-primary mb-2">User Profile</h2>
-            <p class="text-sm text-secondary">Manage your account and app preferences.</p>
-        </div>
-
        <div class="flex-grow space-y-6">
-            {/* Account Section */}
-            <div>
-                <h3 class="text-xs uppercase text-secondary font-semibold mb-2 px-4 sm:px-0">Account</h3>
-                <List twoLine class="bg-secondary rounded-md border border-border-primary p-0">
-                    <SettingsItem icon={UserCircle2} primary="Edit Profile" secondary="Manage your public profile" onClick={() => alert("Edit Profile clicked (not implemented)")} />
-                </List>
-            </div>
-
              {/* App Preferences Section */}
             <div>
                 <h3 class="text-xs uppercase text-secondary font-semibold mb-2 px-4 sm:px-0">App Preferences</h3>
