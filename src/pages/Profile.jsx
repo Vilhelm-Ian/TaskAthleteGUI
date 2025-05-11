@@ -134,11 +134,23 @@ const Profile = () => {
                         icon={Settings}
                         primary="Measurement Units"
                         actionComponent={
-                            <Select
+                                                    <Select
                                 selectedIndex={config.units === 'metric' ? 0 : 1}
                                 onChange={(e) => {
-                                    const newUnits = e.target.selectedIndex === 0 ? 'metric' : 'imperial';
-                                    handleSettingChange('set_units', { units: newUnits }, (prev, payload) => ({...prev, units: payload.units }));
+                                    const newUnitsValue = e.target.selectedIndex === 0 ? 'metric' : 'imperial';
+                                    // This is the content expected by the SetUnitsPayload struct in Rust
+                                    const setUnitsPayloadContent = { units: newUnitsValue };
+                                    
+                                    handleSettingChange(
+                                        'set_units', 
+                                        // The argument for invoke must be an object with a key 'payload',
+                                        // matching the Rust function's parameter name.
+                                        { payload: setUnitsPayloadContent }, 
+                                        // The updateFn receives the same object passed to invoke (the second argument).
+                                        // So, 'invokedArgs' here will be { payload: { units: newUnitsValue } }.
+                                        // We need to access the actual units value from inside this structure.
+                                        (prevConfig, invokedArgs) => ({ ...prevConfig, units: invokedArgs.payload.units })
+                                    );
                                 }}
                             >
                                 <Select.Item>Metric (kg, km)</Select.Item>

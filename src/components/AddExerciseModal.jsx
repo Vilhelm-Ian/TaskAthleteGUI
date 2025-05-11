@@ -47,7 +47,10 @@ const AddExerciseModal = ({
     try {
       const configData = await invoke('get_config');
       if (configData) {
-        if (configData.bodyweight != null) setUserBodyweight(parseFloat(configData.bodyweight));
+        // if (configData.bodyweight != null) setUserBodyweight(parseFloat(configData.bodyweight));
+        let bodyweight = await invoke("get_body_weight") 
+        console.log(bodyweight)
+        setUserBodyweight(bodyweight)
         if (configData.units) {
             const unitSystem = typeof configData.units === 'string' ? configData.units.toLowerCase() : (configData.units.weight || 'kg');
             setUserBodyweightUnit(unitSystem === 'imperial' ? 'lbs' : 'kg');
