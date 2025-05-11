@@ -23,33 +23,65 @@ const parseMuscles = (muscleData) => {
 
 // --- Updated WorkoutCard ---
 const WorkoutCard = ({ workout, exerciseDef, onSelectWorkout }) => {
-  const durationMinutes = workout.duration ? Math.round(workout.duration / 60) : null;
-  const durationSeconds = workout.duration ? workout.duration % 60 : null;
-
+  // --- DURATION ---
+  // workout.duration_minutes from Rust is i64, so it's whole minutes.
   let durationDisplay = null;
-  if (durationMinutes !== null) {
-    durationDisplay = `${durationMinutes}m`;
-    if (durationSeconds > 0) {
-      durationDisplay += ` ${durationSeconds}s`;
-    }
-  } else if (workout.duration) {
-    durationDisplay = `${workout.duration}s`;
+  if (workout.durationMinutes != null && workout.durationMinutes > 0) { // Corrected: workout.durationMinutes
+    durationDisplay = `${workout.durationMinutes}m`;
   }
 
-  const exerciseType = workout.exercise_type || (exerciseDef ? exerciseDef.type_ : null);
+  // --- EXERCISE TYPE ---
+  // workout.exercise_type from Rust -> workout.exerciseType in JS
+  // exerciseDef.type_ is assumed to be correct based on your ExerciseDefinition structure.
+  const exerciseType = workout.exerciseType || (exerciseDef ? exerciseDef.type_ : null); // Corrected: workout.exerciseType
+  const isBodyweight = exerciseType && exerciseType.toLowerCase() === 'bodyweight';
 
   let metrics = [];
   if (workout.sets != null && workout.reps != null) {
     metrics.push(`${workout.sets} sets × ${workout.reps} reps`);
   }
-  if (workout.weight != null) {
-    metrics.push(`${workout.weight} kg`); // Assuming kg, adapt if units vary
+
+  // --- WEIGHT LOGIC ---
+  if (isBodyweight) {
+    // For bodyweight exercises, workout.weight is considered added weight.
+    // workout.bodyweight is the person's body weight at the time of the workout.
+    const addedWeightValue = workout.weight != null ? Number(workout.weight) : null;
+    const bodyWeightAtTime = workout.bodyweight != null ? Number(workout.bodyweight) : null; // Corrected: workout.bodyweight
+
+    if (bodyWeightAtTime != null && !isNaN(bodyWeightAtTime)) {
+      const currentAddedWeight = (addedWeightValue != null && !isNaN(addedWeightValue)) ? addedWeightValue : 0;
+      const totalEffectiveWeight = currentAddedWeight + bodyWeightAtTime;
+
+      if (currentAddedWeight > 0) {
+        metrics.push(`${totalEffectiveWeight.toFixed(1)} kg (${bodyWeightAtTime.toFixed(1)} kg BW + ${currentAddedWeight.toFixed(1)} kg)`);
+      } else { // Only bodyweight, or added weight is 0 or invalid
+        metrics.push(`${bodyWeightAtTime.toFixed(1)} kg BW`);
+      }
+    } else if (addedWeightValue != null && !isNaN(addedWeightValue) && addedWeightValue > 0) {
+      // Bodyweight exercise, but bodyWeightAtTime is missing or invalid.
+      // Show only added weight if it's valid AND greater than 0.
+      metrics.push(`${addedWeightValue.toFixed(1)} kg (added)`);
+    }
+    // If neither bodyWeightAtTime nor a positive addedWeightValue are present for a bodyweight exercise,
+    // no specific weight metric is pushed. Sets/reps define the work.
+
+  } else { // Not a bodyweight exercise, or type is unknown
+    const standardWeightValue = workout.weight != null ? Number(workout.weight) : null;
+    if (standardWeightValue != null && !isNaN(standardWeightValue)) {
+      metrics.push(`${standardWeightValue.toFixed(1)} kg`); // Assuming kg
+    }
   }
+  // --- END OF WEIGHT LOGIC ---
+
   if (durationDisplay) {
     metrics.push(durationDisplay);
   }
+
   if (workout.distance != null) {
-    metrics.push(`${workout.distance} km`); // Assuming km, adapt if units vary
+    const distanceValue = Number(workout.distance);
+    if (!isNaN(distanceValue) && distanceValue > 0) { // Only show if valid and positive
+        metrics.push(`${distanceValue.toFixed(1)} km`); // Assuming km
+    }
   }
 
   return (
@@ -73,7 +105,7 @@ const WorkoutCard = ({ workout, exerciseDef, onSelectWorkout }) => {
   );
 };
 
-// --- Simple Calendar Component ---
+// --- Simple Calendar Component (UPDATED) ---
 const MiniCalendar = ({ year, month, onDateClick, activeDates, selectedDate, onMonthChange, isMainView = false }) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -99,19 +131,34 @@ const MiniCalendar = ({ year, month, onDateClick, activeDates, selectedDate, onM
     const isActive = activeDates.has(dateStr);
     const isSelected = selectedDate === dateStr;
 
+    let dotColorClass = '';
+    if (isActive) {
+      // If the day is selected, use a dot color that contrasts with the primary background.
+      // Assumes text-on-primary is a contrasting color (e.g., white on blue).
+      if (isSelected) {
+        dotColorClass = 'bg-[var(--color-text-on-accent)]';
+      } else {
+      // For active (but not selected) days, use the main theme accent color for the dot.
+        dotColorClass = 'bg-[var(--color-accent-emphasis)]';
+      }
+    }
+
     calendarDays.push(
       <button
         key={day}
         onClick={() => onDateClick(dateStr)}
         disabled={!isActive && !isMainView && !isSelected}
-        class={`p-1 w-full aspect-square flex items-center justify-center rounded-md text-xs transition-colors duration-150
-          ${isSelected ? 'bg-primary text-on-primary font-semibold ring-2 ring-primary-focus' : // Assuming text-on-primary for contrast
+        class={`p-1 w-full aspect-square flex flex-col items-center justify-center rounded-md text-xs transition-colors duration-150
+          ${isSelected ? 'bg-primary text-on-primary font-semibold ring-2 ring-primary-focus' :
             isActive ? 'bg-accent-positive/10 text-accent-positive-emphasis hover:bg-accent-positive/20 font-medium' :
             isToday ? 'bg-hover text-subtle' : 'text-muted'}
           ${(!isActive && !isMainView && !isSelected) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-hover'}
         `}
       >
-        {day}
+        <span>{day}</span>
+        {isActive && (
+          <div class={`mt-0.5 w-1.5 h-1.5 rounded-full ${dotColorClass}`}></div>
+        )}
       </button>
     );
   }
@@ -448,7 +495,7 @@ const History = () => {
                     isMainView={false} /* Should be false for sidebar/modal calendar */
                     onDateClick={(dateStr) => {
                         handleCalendarDateClick(dateStr);
-                        setCurrentView('list');
+setCurrentView('list');
                         setShowMobileFilters(false);
                     }}/>
                 </div>

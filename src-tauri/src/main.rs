@@ -533,6 +533,7 @@ fn main() {
             set_pb_notify_distance,
             set_target_bodyweight,
             get_previous_workout_details,
+            add_bodyweight_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -657,4 +658,35 @@ fn get_body_weights(
         .list_bodyweights(u32::MAX)
         .map_err(|e| e.to_string())?;
     Ok(bodyweights)
+}
+
+#[tauri::command]
+fn add_bodyweight_entry(weight: f64, state: tauri::State<'_, AppState>) -> Result<i64, String> {
+    let mut service = state // Make service mutable
+        .lock()
+        .map_err(|e| format!("Failed to lock state for add_bodyweight_entry: {}", e))?;
+
+    let timestamp = Utc::now(); // Generate timestamp in the backend
+
+    // 1. Add the entry to the historical log
+    let entry_id = service
+        .add_bodyweight_entry(timestamp, weight)
+        .map_err(|e| format!("Failed to add bodyweight entry to log: {}", e.to_string()))?;
+
+    // 2. Update the config's current_bodyweight and save the config.
+    // This assumes logging a new weight should also make it the "current" one.
+    // The set_bodyweight method in AppService should handle updating
+    // config.current_bodyweight and then saving the config.
+    if let Err(e) = service.set_bodyweight(weight) {
+        // Log this error, but proceed as the main entry was added.
+        // Or, decide if this should be a hard error for the command.
+        // For now, just log and return the entry_id.
+        eprintln!(
+            "Failed to update current_bodyweight in config after adding new entry: {}",
+            e.to_string()
+        );
+        // If you want this to be a critical failure, you could return Err(e.to_string()) here.
+    }
+
+    Ok(entry_id) // Return the ID of the newly added bodyweight log entry
 }
