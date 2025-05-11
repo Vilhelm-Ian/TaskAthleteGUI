@@ -378,3 +378,20 @@ input[type="number"]:focus, input[type="text"]:focus, input[type="email"]:focus,
 select {
   appearance: none;
 }
+
+
+@keyframes slideInBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-bottom {
+  animation: slideInBottom 0.3s ease-out forwards;
+}
+

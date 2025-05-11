@@ -1,8 +1,8 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
-import { Calendar, Plus, ChevronLeft, ChevronRight, AlertTriangle, Loader2 } from 'lucide-preact';
-import DatePicker from '../components/DatePicker'; // Adjust path if your structure is different
+import { Calendar, Plus, ChevronLeft, ChevronRight, AlertTriangle, Loader2, Award, X as CloseIcon } from 'lucide-preact'; // Added Award, CloseIcon
+import DatePicker from '../components/DatePicker';
 import AddExerciseModal from '../components/AddExerciseModal';
 
 // Helper function
@@ -20,16 +20,27 @@ const processBackendWorkouts = (backendWorkouts) => {
     }
     const numSetsToCreate = (workout.sets != null && workout.sets > 0) ? workout.sets : 1;
     const hasMetrics = workout.reps != null || workout.weight != null || workout.duration_minutes != null || workout.distance != null;
-    if (!hasMetrics) return; 
+    
+    if (!hasMetrics && numSetsToCreate === 1) { // Only return if no metrics AND it's a single set with no explicit count
+        // This case could mean an exercise was logged without specific metrics,
+        // useful for just tracking occurrence. We might want to show the exercise card
+        // with a "No specific metrics logged" message.
+        // If numSetsToCreate > 1 and no metrics, it's ambiguous, so we'll treat it as before.
+        // For now, let's keep the original logic of returning if !hasMetrics for simplicity.
+        // To show exercises even without metrics, this `if (!hasMetrics) return;` line needs adjustment.
+        // For now, keeping original behavior.
+        if(!hasMetrics) return;
+    }
+
     for (let i = 0; i < numSetsToCreate; i++) {
       const setData = {};
       if (workout.reps != null) setData.reps = workout.reps;
       if (workout.weight != null) setData.weight = workout.weight;
       if (workout.duration_minutes != null) setData.duration = workout.duration_minutes;
       if (workout.distance != null) setData.distance = workout.distance;
-      if (Object.keys(setData).length > 0) {
-        exerciseGroups[exerciseName].sets.push(setData);
-      }
+      // Add set even if it's empty, to represent a logged set without specific metrics
+      // This allows ExerciseCard to show "No quantifiable sets recorded" if needed
+      exerciseGroups[exerciseName].sets.push(setData);
     }
   });
   return Object.values(exerciseGroups).filter(group => group.sets && group.sets.length > 0);
@@ -38,17 +49,37 @@ const processBackendWorkouts = (backendWorkouts) => {
 const LogWorkout = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [formattedDate, setFormattedDate] = useState("");
-  const [dateKey, setDateKey] = useState(""); 
+  const [dateKey, setDateKey] = useState("");
   const [workoutData, setWorkoutData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+  
+  const [pbNotification, setPbNotification] = useState(null); // For PB toast
+  const [userConfigUnits, setUserConfigUnits] = useState('metric'); // 'metric' or 'imperial'
 
-  const dateFormatOptions = { 
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+  const dateFormatOptions = {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   };
+
+  // Fetch user config for units display
+  useEffect(() => {
+    const fetchUserConfig = async () => {
+      try {
+        const config = await invoke('get_config');
+        if (config && config.units) {
+          // units in backend config is an enum Metric/Imperial as a string
+          setUserConfigUnits(config.units.toLowerCase());
+        }
+      } catch (err) {
+        console.error("LogWorkout: Failed to fetch user config:", err);
+        // Keep default 'metric'
+      }
+    };
+    fetchUserConfig();
+  }, []);
 
   const changeDate = (days) => {
     const newDate = new Date(currentDate);
@@ -58,7 +89,7 @@ const LogWorkout = () => {
   };
 
   const fetchWorkoutsForCurrentDate = useCallback(async () => {
-    if (!dateKey) return; 
+    if (!dateKey) return;
     setLoading(true);
     setError(null);
     setWorkoutData([]);
@@ -88,14 +119,29 @@ const LogWorkout = () => {
     fetchWorkoutsForCurrentDate();
   }, [fetchWorkoutsForCurrentDate]);
 
-  const handleWorkoutAdded = () => {
-    fetchWorkoutsForCurrentDate(); 
+  const handleWorkoutAdded = (pbInfo) => { // pbInfo is Option<PBInfo> from Rust
+    fetchWorkoutsForCurrentDate();
+    if (pbInfo) {
+      const anyPbAchieved = pbInfo.weight?.achieved ||
+                            pbInfo.reps?.achieved ||
+                            pbInfo.duration?.achieved ||
+                            pbInfo.distance?.achieved;
+      if (anyPbAchieved) {
+        setPbNotification(pbInfo);
+        // Optional: auto-dismiss after a few seconds
+        // setTimeout(() => setPbNotification(null), 7000);
+      } else {
+        setPbNotification(null);
+      }
+    } else {
+      setPbNotification(null);
+    }
   };
 
   const fetchWorkoutDatesForCalendarMonth = useCallback(async (year, month_one_indexed) => {
     try {
-      const datesArray = await invoke('get_workout_dates_for_month', { 
-        query: { year: year, month: month_one_indexed } 
+      const datesArray = await invoke('get_workout_dates_for_month', {
+        query: { year: year, month: month_one_indexed }
       });
       return datesArray || [];
     } catch (err) {
@@ -109,8 +155,27 @@ const LogWorkout = () => {
     setShowDatePicker(false);
   };
 
+  const formatPbValue = (value, type) => {
+    if (value == null) return 'N/A';
+    switch (type) {
+      case 'weight':
+        return `${value.toFixed(1)} ${userConfigUnits === 'imperial' ? 'lbs' : 'kg'}`;
+      case 'reps':
+        return `${value} reps`;
+      case 'duration':
+        return `${value} min`;
+      case 'distance': // PBInfo.distance is always in km from backend
+        if (userConfigUnits === 'imperial') {
+          return `${(value * 0.621371).toFixed(2)} miles`; // Convert km to miles
+        }
+        return `${value.toFixed(2)} km`;
+      default:
+        return value.toString();
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-surface rounded-lg shadow-themed-lg p-4 sm:p-6">
+    <div className="flex flex-col h-full bg-surface rounded-lg shadow-themed-lg p-4 sm:p-6 relative">
       {/* Date Navigation Bar */}
       <div className="flex items-center justify-between mb-6 sm:mb-8 bg-app p-3 sm:p-4 rounded-xl shadow-themed-md border border-divider relative">
         <button
@@ -135,7 +200,7 @@ const LogWorkout = () => {
           <ChevronRight size={24} strokeWidth={2} />
         </button>
         {showDatePicker && (
-          <div className="date-picker-container"> 
+          <div className="date-picker-container">
             <DatePicker
               initialSelectedDate={currentDate}
               onDateSelect={handleDateSelectFromPicker}
@@ -149,7 +214,6 @@ const LogWorkout = () => {
       {/* Main Content Area */}
       <div className="flex-grow mt-4 sm:mt-6">
         <div className="space-y-6 sm:space-y-8 relative">
-          {/* Add Exercise Button */}
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => setShowAddExerciseModal(true)}
@@ -160,7 +224,6 @@ const LogWorkout = () => {
             </button>
           </div>
 
-          {/* Workout Display Area */}
           {loading ? (
             <div className="flex flex-col items-center justify-center text-subtle bg-app p-8 rounded-xl shadow-themed-md border border-divider min-h-[200px]">
               <Loader2 size={48} className="animate-spin text-accent-emphasis mb-4" />
@@ -177,7 +240,7 @@ const LogWorkout = () => {
           ) : workoutData.length > 0 ? (
             <div className="space-y-6 sm:space-y-8">
               {workoutData.map((exercise, index) => (
-                <ExerciseCard key={`${exercise.name}-${dateKey}-${index}`} exercise={exercise} />
+                <ExerciseCard key={`${exercise.name}-${dateKey}-${index}`} exercise={exercise} userConfigUnits={userConfigUnits} />
               ))}
             </div>
           ) : (
@@ -192,60 +255,115 @@ const LogWorkout = () => {
         </div>
       </div>
 
-      {/* AddExerciseModal */}
       <AddExerciseModal
         isOpen={showAddExerciseModal}
         onClose={() => setShowAddExerciseModal(false)}
         currentDateKey={dateKey}
         onWorkoutAdded={handleWorkoutAdded}
       />
+
+      {/* PB Notification Toast */}
+      {pbNotification && (
+        <div
+          // Basic animation class, define slideInBottom in your CSS
+          className="bg-primary fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200] bg-accent-positive text-on-accent-positive p-4 rounded-lg shadow-2xl w-full max-w-xs sm:max-w-sm border border-accent-positive-emphasis animate-slide-in-bottom"
+          role="alert"
+          aria-live="assertive"
+        >
+          <div className="flex items-start">
+            <Award size={24} className="mr-3 mt-1 text-current flex-shrink-0" />
+            <div className="flex-grow">
+              <h3 className="text-lg font-semibold mb-2">New Personal Best!</h3>
+              <ul className="space-y-1 text-sm">
+                {pbNotification.weight?.achieved && (
+                  <li>
+                    <strong>Weight:</strong> {formatPbValue(pbNotification.weight.new_value, 'weight')}
+                    {pbNotification.weight.previous_value != null && (
+                       <span className="text-xs opacity-80 ml-1">(prev: {formatPbValue(pbNotification.weight.previous_value, 'weight')})</span>
+                    )}
+                  </li>
+                )}
+                {pbNotification.reps?.achieved && (
+                  <li>
+                    <strong>Reps:</strong> {formatPbValue(pbNotification.reps.new_value, 'reps')}
+                    {pbNotification.reps.previous_value != null && (
+                       <span className="text-xs opacity-80 ml-1">(prev: {formatPbValue(pbNotification.reps.previous_value, 'reps')})</span>
+                    )}
+                  </li>
+                )}
+                {pbNotification.duration?.achieved && (
+                  <li>
+                    <strong>Duration:</strong> {formatPbValue(pbNotification.duration.new_value, 'duration')}
+                     {pbNotification.duration.previous_value != null && (
+                       <span className="text-xs opacity-80 ml-1">(prev: {formatPbValue(pbNotification.duration.previous_value, 'duration')})</span>
+                    )}
+                  </li>
+                )}
+                {pbNotification.distance?.achieved && (
+                  <li>
+                    <strong>Distance:</strong> {formatPbValue(pbNotification.distance.new_value, 'distance')}
+                     {pbNotification.distance.previous_value != null && (
+                       <span className="text-xs opacity-80 ml-1">(prev: {formatPbValue(pbNotification.distance.previous_value, 'distance')})</span>
+                    )}
+                  </li>
+                )}
+              </ul>
+            </div>
+            <button
+              onClick={() => setPbNotification(null)}
+              className="ml-2 p-1.5 rounded-full hover:bg-white/20 transition-colors flex-shrink-0"
+              aria-label="Dismiss PB notification"
+            >
+              <CloseIcon size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const ExerciseCard = ({ exercise }) => (
+const ExerciseCard = ({ exercise, userConfigUnits }) => ( // Pass userConfigUnits for correct display
   <div className='mb-2'>
-    {/* Exercise Card Root */}
     <div className="bg-app p-4 sm:p-5 rounded-xl shadow-themed-lg border border-subtle flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg sm:text-xl font-semibold text-default">{exercise.name}</h3>
       </div>
-    
+
       {exercise.sets && exercise.sets.length > 0 ? (
         <div className="space-y-3">
           {exercise.sets.map((set, idx) => (
-            // Set Item Container - NOW USES bg-surface-alt
             <div key={idx} className="bg-surface-alt p-3 rounded-lg border border-subtle">
-              <div className="flex flex-wrap gap-2 sm:gap-3 items-stretch">
-                {set.reps != null && (
-                  // Metric Box
-                  <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
-                    <span className="block text-md sm:text-lg font-semibold text-default">{set.reps}</span>
-                    <span className='block text-xs text-accent-emphasis font-medium'>Reps</span>
-                  </div>
-                )}
-                {set.weight != null && (
-                  // Metric Box
-                  <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
-                    <span className="block text-md sm:text-lg font-semibold text-default">{set.weight}</span>
-                    <span className="block text-xs text-subtle">lbs</span>
-                  </div>
-                )}
-                {set.duration != null && (
-                  // Metric Box
-                  <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
-                    <span className="block text-md sm:text-lg font-semibold text-default">{set.duration}</span>
-                    <span className="block text-xs text-subtle">min</span>
-                  </div>
-                )}
-                {set.distance != null && (
-                  // Metric Box
-                  <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
-                    <span className="block text-md sm:text-lg font-semibold text-default">{set.distance}</span>
-                    <span className="block text-xs text-subtle">km</span>
-                  </div>
-                )}
-              </div>
+              {Object.keys(set).length === 0 ? ( // Check if the set object is empty
+                <p className="text-sm text-muted italic">Set logged without specific metrics.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 sm:gap-3 items-stretch">
+                  {set.reps != null && (
+                    <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
+                      <span className="block text-md sm:text-lg font-semibold text-default">{set.reps}</span>
+                      <span className='block text-xs text-accent-emphasis font-medium'>Reps</span>
+                    </div>
+                  )}
+                  {set.weight != null && (
+                    <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
+                      <span className="block text-md sm:text-lg font-semibold text-default">{set.weight}</span>
+                      <span className="block text-xs text-subtle">{userConfigUnits === 'imperial' ? 'lbs' : 'kg'}</span>
+                    </div>
+                  )}
+                  {set.duration != null && (
+                    <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
+                      <span className="block text-md sm:text-lg font-semibold text-default">{set.duration}</span>
+                      <span className="block text-xs text-subtle">min</span>
+                    </div>
+                  )}
+                  {set.distance != null && (
+                    <div className="flex-1 min-w-[70px] sm:min-w-[85px] p-2 text-center bg-app rounded-md shadow-themed-sm border border-subtle">
+                      <span className="block text-md sm:text-lg font-semibold text-default">{set.distance}</span>
+                      <span className="block text-xs text-subtle">{userConfigUnits === 'imperial' ? 'miles' : 'km'}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
