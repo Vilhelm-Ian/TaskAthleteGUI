@@ -523,7 +523,7 @@ fn main() {
             delete_alias,
             list_all_muscles,
             set_units,
-            get_body_weight,
+            get_body_weights,
             // set_bodyweight_prompt_enabled,
             set_streak_interval,
             set_pb_notification_enabled,
@@ -647,12 +647,14 @@ fn set_target_bodyweight(
 }
 
 #[tauri::command]
-fn get_body_weight(state: tauri::State<'_, AppState>) -> Result<f64, String> {
+fn get_body_weights(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<(i64, DateTime<Utc>, f64)>, String> {
     let mut service = state
         .lock()
         .map_err(|e| format!("Failed to lock state: {}", e))?;
-    let weights = service
+    let bodyweights = service
         .list_bodyweights(u32::MAX)
         .map_err(|e| e.to_string())?;
-    Ok(weights[0].2)
+    Ok(bodyweights)
 }
