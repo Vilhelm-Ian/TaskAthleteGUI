@@ -6,8 +6,8 @@ pkgs.mkShell {
     pkg-config
     gobject-introspection
     cargo
-    rustc
     cargo-tauri
+    rustup
     nodejs
   ];
 
@@ -24,6 +24,5 @@ pkgs.mkShell {
     pango
     webkitgtk_4_1
     openssl
-    tailwindcss
   ];
 }

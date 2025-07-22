@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::Deserialize; // Serialize might be needed if any local structs are returned
+use serde::{Deserialize, Serialize}; // Serialize might be needed if any local structs are returned
 use std::sync::{Arc, Mutex};
 // For HashMap in list_aliases, though often implicitly available via std prelude
 // use std::collections::HashMap; // Explicit import not strictly necessary for HashMap usually
@@ -22,10 +22,29 @@ use task_athlete_lib::{
     VolumeFilters,
     Workout,
     WorkoutFilters,
+    SyncSummary,
+    sync_client
 };
+
+
 
 // Type alias for the shared state
 type AppState = Arc<Mutex<AppService>>;
+
+#[derive(Deserialize, Serialize)]
+struct SyncResultPayload {
+    sent: SyncSummary,
+    received: SyncSummary,
+}
+
+struct SyncPrelude {
+    server_url: String,
+    last_sync_ts: Option<DateTime<Utc>>,
+    local_changes: sync_client::ChangesPayload,
+    summary_sent: SyncSummary,
+}
+
+
 
 // --- Command Input Structs ---
 #[derive(Deserialize)]
@@ -121,10 +140,84 @@ fn parse_exercise_type(type_str: &str) -> Result<ExerciseType, String> {
 
 // --- Tauri Commands ---
 
-// From your initial lib.rs snippet
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+
+#[tauri::command]
+async fn perform_sync(
+    server_url_override: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<SyncResultPayload, String> {
+    // Phase 1: Read data from the database (synchronous)
+    let prelude = {
+        let service = state
+            .lock()
+            .map_err(|e| format!("Failed to lock state for sync (read phase): {}", e))?;
+
+        let server_url = service
+            .get_server_url(server_url_override)
+            .map_err(|e| e.to_string())?;
+        let last_sync_ts = service.get_last_sync_timestamp();
+        let local_changes = service
+            .collect_local_changes(last_sync_ts)
+            .map_err(|e| format!("Failed to collect local changes: {}", e))?;
+
+        let summary_sent = SyncSummary {
+            config: local_changes.config.is_some(),
+            exercises: local_changes.exercises.len(),
+            workouts: local_changes.workouts.len(),
+            aliases: local_changes.aliases.len(),
+            bodyweights: local_changes.bodyweights.len(),
+        };
+
+        SyncPrelude {
+            server_url,
+            last_sync_ts,
+            local_changes,
+            summary_sent,
+        }
+    }; // Mutex lock is released here as `service` goes out of scope.
+
+    // Phase 2: Network communication (asynchronous)
+    let client = sync_client::SyncClient::new(prelude.server_url.clone());
+    println!("Pushing changes to server: {}...", prelude.server_url);
+    let server_response = client
+        .push_and_pull_changes(prelude.last_sync_ts, prelude.local_changes)
+        .await
+        .map_err(|e| format!("Sync communication with server failed: {}", e))?;
+
+    // Phase 3: Write data to the database (synchronous)
+    let summary_received = {
+        let mut service = state
+            .lock()
+            .map_err(|e| format!("Failed to lock state for sync (write phase): {}", e))?;
+
+        println!("Applying server changes...");
+        let summary = service
+            .apply_server_changes(server_response.data_to_client)
+            .map_err(|e| format!("Failed to apply server changes: {}", e))?;
+
+        service
+            .set_last_sync_timestamp(server_response.server_current_ts)
+            .map_err(|e| format!("Failed to update last sync timestamp in config: {}", e))?;
+
+        println!("Local database and config updated with server changes.");
+        summary
+    }; // Mutex lock is released here.
+
+    Ok(SyncResultPayload {
+        sent: prelude.summary_sent,
+        received: summary_received,
+    })
+}
+
+#[tauri::command]
+fn set_sync_server_url(url: Option<String>, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut service = state.lock().map_err(|e| format!("Failed to lock state: {}", e))?;
+    service.set_sync_server_url(url).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -615,7 +708,9 @@ pub fn run() {
             set_pb_notify_distance,
             set_target_bodyweight,
             get_previous_workout_details,
-            add_bodyweight_entry
+            add_bodyweight_entry,
+            perform_sync,
+            set_sync_srver_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
