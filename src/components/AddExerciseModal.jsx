@@ -26,6 +26,7 @@ const AddExerciseModal = ({
   editingWorkoutLogId
 }) => {
   const [step, setStep] = useState(1);
+  const [count, setCount] = useState(1);
   
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [logData, setLogData] = useState({ reps: '', weight: '', duration: '', distance: '' });
@@ -183,9 +184,8 @@ const AddExerciseModal = ({
         onActionCompleted(null);
 
       } else { // ADD MODE
-        const workoutDate = new Date(currentDateKey + "T12:00:00.000Z").toISOString();
         const addPayload = {
-          exercise_identifier: selectedExercise.name, date: workoutDate, sets: 1, 
+          exercise_identifier: selectedExercise.name, sets: 1, 
           reps: selectedExercise.log_reps ? parseNumericInput(logData.reps, parseInt) : undefined,
           weight: selectedExercise.log_weight ? parseNumericInput(logData.weight, parseFloat) : undefined,
           duration: selectedExercise.log_duration ? parseNumericInput(logData.duration, parseInt) : undefined,
@@ -213,6 +213,7 @@ const AddExerciseModal = ({
   
   const handleExerciseCreated = () => {
     setIsCreateExerciseModalOpen(false);
+    setCount(v => v + 1)
     // ExerciseSelectionStep will typically re-fetch on its own if re-mounted or a key changes.
     // For now, parent LogWorkout handles refreshing the entire view which re-opens this modal fresh.
   };
@@ -272,6 +273,7 @@ const AddExerciseModal = ({
 
             {step === 1 && (
               <ExerciseSelectionStep
+                count={count}
                 onExerciseSelect={handleExerciseSelectFromStep1}
                 onOpenCreateExerciseModal={handleOpenCreateExerciseModal}
                 onInitialDataLoaded={handleStep1InitialDataLoaded} 

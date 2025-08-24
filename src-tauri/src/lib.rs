@@ -709,7 +709,8 @@ pub fn run() {
             set_target_bodyweight,
             get_previous_workout_details,
             add_bodyweight_entry,
-            perform_sync
+            perform_sync,
+            set_sync_server_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

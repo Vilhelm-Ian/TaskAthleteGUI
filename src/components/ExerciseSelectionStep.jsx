@@ -7,7 +7,7 @@ import { Loader2, AlertTriangle, Search, XCircle, PlusCircle } from 'lucide-prea
 const EXERCISE_TYPES = { BODYWEIGHT: 'BodyWeight', RESISTANCE: 'Resistance', CARDIO: 'Cardio' };
 const EXERCISE_TYPE_LABELS = { [EXERCISE_TYPES.BODYWEIGHT]: 'Bodyweight', [EXERCISE_TYPES.RESISTANCE]: 'Resistance', [EXERCISE_TYPES.CARDIO]: 'Cardio' };
 
-const ExerciseSelectionStep = ({ onExerciseSelect, onOpenCreateExerciseModal, onInitialDataLoaded }) => {
+const ExerciseSelectionStep = ({ onExerciseSelect, onOpenCreateExerciseModal, onInitialDataLoaded, count }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [exercisesToDisplay, setExercisesToDisplay] = useState([]);
   const [availableMuscles, setAvailableMuscles] = useState([]);
@@ -49,7 +49,7 @@ const ExerciseSelectionStep = ({ onExerciseSelect, onOpenCreateExerciseModal, on
     } finally {
       setLoading(false);
     }
-  }, [onInitialDataLoaded]); // Added onInitialDataLoaded
+  }, [onInitialDataLoaded, count]); // Added onInitialDataLoaded
 
   const fetchExercisesOnFilterChange = useCallback(async () => {
     // Don't fetch if initial data is still loading
@@ -82,7 +82,7 @@ const ExerciseSelectionStep = ({ onExerciseSelect, onOpenCreateExerciseModal, on
   // Effect for initial data load
   useEffect(() => {
     fetchInitialStep1Data();
-  }, [fetchInitialStep1Data]);
+  }, [fetchInitialStep1Data, count]);
 
   // Effect for fetching exercises when filters or search term change
   useEffect(() => {

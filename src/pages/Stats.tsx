@@ -99,9 +99,11 @@ interface D3ChartProps {
   data: ParsedChartDataPoint[];
   graphMetricType: string;
   chartId: string;
+  width: number; // Pass width and height from parent
+  height: number;
 }
 
-const D3ChartComponent = ({ data, graphMetricType, chartId }: D3ChartProps) => {
+const D3ChartComponent = ({ data, graphMetricType, chartId, width: containerWidth, height: containerHeight }: D3ChartProps) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
@@ -113,12 +115,6 @@ const D3ChartComponent = ({ data, graphMetricType, chartId }: D3ChartProps) => {
 
     svg.selectAll("*").remove();
 
-    const parentElement = svgRef.current.parentElement;
-    if (!parentElement) return;
-
-    const parentWidth = parentElement.clientWidth;
-    const parentHeight = parentElement.clientHeight;
-
     const styles = getComputedStyle(document.documentElement);
     const textColorMuted = styles.getPropertyValue('--color-text-muted').trim() || '#9ca3af';
     const textColorSubtle = styles.getPropertyValue('--color-text-subtle').trim() || '#6b7280';
@@ -127,10 +123,10 @@ const D3ChartComponent = ({ data, graphMetricType, chartId }: D3ChartProps) => {
 
 
     if (data.length === 0) {
-      svg.attr('width', parentWidth).attr('height', parentHeight);
+      svg.attr('width', containerWidth).attr('height', containerHeight);
       svg.append("text")
-        .attr("x", parentWidth / 2)
-        .attr("y", parentHeight / 2)
+        .attr("x", containerWidth / 2)
+        .attr("y", containerHeight / 2)
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "middle")
         .style("font-size", "16px")
@@ -141,8 +137,8 @@ const D3ChartComponent = ({ data, graphMetricType, chartId }: D3ChartProps) => {
     }
 
     const margin = { top: 20, right: 30, bottom: 60, left: 60 };
-    const width = parentWidth - margin.left - margin.right;
-    const height = parentHeight - margin.top - margin.bottom;
+    const width = containerWidth - margin.left - margin.right;
+    const height = containerHeight - margin.top - margin.bottom;
 
     if (width <= 0 || height <= 0) return;
 
@@ -211,7 +207,7 @@ const D3ChartComponent = ({ data, graphMetricType, chartId }: D3ChartProps) => {
           tooltip.style("opacity", 0);
         });
 
-  }, [data, graphMetricType, chartId]);
+  }, [data, graphMetricType, chartId, containerWidth, containerHeight]); // Add containerWidth, containerHeight to dependencies
 
   return (
     <div class="w-full h-full relative">
@@ -353,6 +349,28 @@ const Stats = () => {
   const [statsError, setStatsError] = useState<string | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   // --- End State for Exercise Stats ---
+
+  // Ref for the chart container to measure its dimensions
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const [chartDimensions, setChartDimensions] = useState({ width: 0, height: 0 });
+
+  // Effect to measure chart container dimensions
+  useEffect(() => {
+    const updateChartDimensions = () => {
+      if (chartContainerRef.current) {
+        setChartDimensions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight,
+        });
+      }
+    };
+
+    updateChartDimensions(); // Set initial dimensions
+    window.addEventListener('resize', updateChartDimensions); // Update on resize
+
+    return () => window.removeEventListener('resize', updateChartDimensions);
+  }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
+
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -503,8 +521,8 @@ const Stats = () => {
         </div>
       </div>
 
-      {/* Chart Display Area */}
-      <div class="flex-grow bg-[var(--color-bg-surface)] p-2 rounded-lg shadow-lg border border-[var(--color-border-subtle)] min-h-[350px] md:min-h-[450px] relative">
+      {/* Chart Display Area - Removed fixed min-h, added flex-grow and a defined height for smaller screens */}
+      <div ref={chartContainerRef} class="flex-grow bg-[var(--color-bg-surface)] p-2 rounded-lg shadow-lg border border-[var(--color-border-subtle)] h-64 sm:h-80 md:h-96 relative">
         {isLoading && selectedExerciseId && ( // Show loading only if an exercise is selected and chart data is loading
           <div class="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-surface)]/75 z-10 rounded-lg">
             <p class="text-lg text-[var(--color-accent-emphasis)]">Loading chart data...</p>
@@ -521,6 +539,8 @@ const Stats = () => {
                 data={chartData}
                 graphMetricType={selectedGraphType}
                 chartId={`exercise-chart-${selectedExerciseId}-${selectedGraphType}`}
+                width={chartDimensions.width} // Pass dimensions to D3ChartComponent
+                height={chartDimensions.height}
             />
         )}
          {/* Show "No data to display" only if not loading, no error, but chartData is empty or null for a selected exercise */}
