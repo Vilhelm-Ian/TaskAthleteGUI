@@ -17,12 +17,12 @@ jobs:
         with:
           path: TaskAthleteGUI
 
-      # Checkout the library repo
+      # Checkout the library repo at the path Cargo expects
       - name: Checkout TaskAthlete library
         uses: actions/checkout@v4
         with:
           repository: Vilhelm-Ian/TaskAthlete
-          path: TaskAthlete
+          path: task-athlete-lib
 
       # Set up Node.js
       - name: Set up Node
