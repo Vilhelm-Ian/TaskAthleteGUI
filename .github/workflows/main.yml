@@ -42,10 +42,10 @@ jobs:
           rustup target add aarch64-linux-android
           npm ci
           if [ ! -d src-tauri/gen/android ]; then
-            echo "Initializing Tauri Android project..."
-            npx tauri android init || true
+            npx tauri android init
           fi
           npx tauri android build --debug
+
 
 
       - name: Upload built APK
