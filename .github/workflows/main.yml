@@ -1,0 +1,50 @@
+name: Build Tauri Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout GUI
+        uses: actions/checkout@v4
+        with:
+          path: TaskAthleteGUI
+
+      - name: Checkout TaskAthlete library
+        uses: actions/checkout@v4
+        with:
+          repository: Vilhelm-Ian/TaskAthlete
+          path: TaskAthlete
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          ndk-version: 27.0.12077973
+
+      - name: Build Tauri Android Debug APK
+        run: |
+          cd TaskAthleteGUI
+          rustup target add aarch64-linux-android
+          npm ci
+          npx tauri android build --debug
+
+      - name: Upload built APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskathletegui-debug-apk
+          path: TaskAthleteGUI/src-tauri/gen/android/app/build/outputs/apk/debug/*.apk
