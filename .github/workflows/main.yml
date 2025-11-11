@@ -41,6 +41,9 @@ jobs:
           cd TaskAthleteGUI
           rustup target add aarch64-linux-android
           npm ci
+          if [ ! -d src-tauri/gen/android ]; then
+            npx tauri android init --force
+          fi
           npx tauri android build --debug
 
       - name: Upload built APK
