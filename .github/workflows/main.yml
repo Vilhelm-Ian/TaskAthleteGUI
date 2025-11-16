@@ -11,59 +11,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the GUI repo
       - name: Checkout TaskAthleteGUI
         uses: actions/checkout@v4
         with:
           path: TaskAthleteGUI
 
-      # Checkout the library repo at the path Cargo expects
       - name: Checkout TaskAthlete library
         uses: actions/checkout@v4
         with:
           repository: Vilhelm-Ian/TaskAthlete
           path: task-athlete-lib
 
-      # Set up Node.js
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # Set up Rust
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Set up Android SDK + NDK
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
         with:
           api-level: 34
           ndk-version: 27.0.12077973
 
-      # Export Android environment variables
       - name: Export Android environment variables
         run: |
           echo "NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
-      # Build Tauri Android APK
       - name: Build Tauri Android Debug APK
         run: |
           cd TaskAthleteGUI
           rustup target add aarch64-linux-android
           npm ci
-          # Initialize Android project if missing
+
           if [ ! -d src-tauri/gen/android ]; then
             echo "Initializing Tauri Android project..."
             npx tauri android init
           fi
-          npx tauri android build --debug
 
-      # Upload APK artifact
+          npx tauri android build --debug --verbose
+
+      - name: Debug APK paths
+        run: |
+          echo "Searching for APK files..."
+          find TaskAthleteGUI -maxdepth 10 -type f -name "*.apk" -print || true
+
       - name: Upload built APK
         uses: actions/upload-artifact@v4
         with:
           name: taskathletegui-debug-apk
-          path: TaskAthleteGUI/src-tauri/gen/android/app/build/outputs/apk/debug/*.apk
+          path: |
+            TaskAthleteGUI/src-tauri/gen/android/**/outputs/**/*.apk
+            TaskAthleteGUI/**/outputs/**/*.apk
+            TaskAthleteGUI/**/*.apk
+          if-no-files-found: warn
