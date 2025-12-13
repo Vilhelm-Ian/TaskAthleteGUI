@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { useLocation } from 'preact-iso';
 import { useState, useEffect, useMemo } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
 import { SlidersHorizontal, Calendar as CalendarIcon, ChevronRight, List, LayoutList, X, AlertTriangle, Loader2 } from 'lucide-preact'; // Added Loader2
@@ -200,6 +201,7 @@ const MiniCalendar = ({ year, month, onDateClick, activeDates, selectedDate, onM
 
 // --- Main History Component ---
 const History = () => {
+  const { query } = useLocation(); 
   const [allWorkouts, setAllWorkouts] = useState([]);
   const [displayedWorkouts, setDisplayedWorkouts] = useState([]);
   const [exerciseDefinitions, setExerciseDefinitions] = useState([]);
@@ -216,6 +218,15 @@ const History = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  useEffect(() => {
+    if (query.exercise) {
+      const exerciseName = decodeURIComponent(query.exercise);
+      setSelectedExerciseNames(new Set([exerciseName]));
+      setCurrentView('list');
+      setSelectedCalendarDate(null);
+    }
+  }, [query.exercise]);
 
   useEffect(() => {
     const fetchData = async () => {

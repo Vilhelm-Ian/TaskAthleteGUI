@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
+import { useLocation } from 'preact-iso';
 // Added Edit3 icon
 import { Calendar, Plus, ChevronLeft, ChevronRight, AlertTriangle, Loader2, Award, X as CloseIcon, Trash2, PlusSquare, Edit3 } from 'lucide-preact';
 import DatePicker from '../components/DatePicker';
@@ -52,6 +53,7 @@ const processBackendWorkouts = (backendWorkouts) => {
 
 
 const LogWorkout = () => {
+  const { route } = useLocation();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [formattedDate, setFormattedDate] = useState("");
   const [dateKey, setDateKey] = useState("");
@@ -220,6 +222,10 @@ const LogWorkout = () => {
     }
   };
 
+  const handleGoToHistory = (exerciseName) => {
+    route(`/history?exercise=${encodeURIComponent(exerciseName)}`);
+  };
+
   return (
     <div className="flex flex-col h-full bg-surface rounded-lg shadow-themed-lg p-4 sm:p-6 relative">
       {/* Date Navigation Bar (remains same) */}
@@ -248,6 +254,7 @@ const LogWorkout = () => {
                   onOpenAddSetModal={handleOpenAddSetModal}
                   onOpenEditSetModal={handleOpenEditSetModal}
                   onDeleteWorkoutLogEntry={handleDeleteWorkoutLogEntry}
+                  onGoToHistory={handleGoToHistory}
                 />
               ))}
             </div>
@@ -306,7 +313,7 @@ const SetItem = ({ logEntry, index, userConfigUnits, onEdit, onDelete }) => (
   </div>
 );
 
-const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpenEditSetModal, onDeleteWorkoutLogEntry }) => {
+const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpenEditSetModal, onDeleteWorkoutLogEntry, onGoToHistory }) => {
   const lastLogEntryMetrics = exerciseGroup.logEntries.length > 0
     ? exerciseGroup.logEntries[exerciseGroup.logEntries.length - 1].metrics
     : {};
@@ -315,7 +322,13 @@ const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpe
     <div className='mb-2'>
       <div className="bg-app p-4 sm:p-5 rounded-xl shadow-themed-lg border border-subtle flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg sm:text-xl font-semibold text-default">{exerciseGroup.name}</h3>
+         <h3 
+            onClick={() => onGoToHistory(exerciseGroup.name)}
+            className="text-lg sm:text-xl font-semibold text-default cursor-pointer hover:text-accent-emphasis hover:underline transition-colors select-none"
+            title="View History for this exercise"
+          >
+            {exerciseGroup.name}
+          </h3>
           <button onClick={() => onOpenAddSetModal(exerciseGroup.name, lastLogEntryMetrics)} title="Add another set for this exercise" className="p-1.5 text-accent-emphasis hover:text-accent-emphasis-hover hover:bg-hover rounded-full transition-colors">
             <PlusSquare size={20} />
           </button>
