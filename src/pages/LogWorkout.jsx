@@ -53,8 +53,14 @@ const processBackendWorkouts = (backendWorkouts) => {
 
 
 const LogWorkout = () => {
-  const { route } = useLocation();
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const { query, route } = useLocation();
+  const [currentDate, setCurrentDate] = useState(() => {
+    if (query.date) {
+      const parsed = new Date(query.date + 'T00:00:00');
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return new Date();
+  });
   const [formattedDate, setFormattedDate] = useState("");
   const [dateKey, setDateKey] = useState("");
   const [workoutData, setWorkoutData] = useState([]);

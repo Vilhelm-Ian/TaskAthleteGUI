@@ -81,7 +81,7 @@ const WorkoutCard = ({ workout, exerciseDef, onSelectWorkout }) => {
   if (workout.distance != null) {
     const distanceValue = Number(workout.distance);
     if (!isNaN(distanceValue) && distanceValue > 0) { // Only show if valid and positive
-        metrics.push(`${distanceValue.toFixed(1)} km`); // Assuming km
+      metrics.push(`${distanceValue.toFixed(1)} km`); // Assuming km
     }
   }
 
@@ -139,7 +139,7 @@ const MiniCalendar = ({ year, month, onDateClick, activeDates, selectedDate, onM
       if (isSelected) {
         dotColorClass = 'bg-[var(--color-text-on-accent)]';
       } else {
-      // For active (but not selected) days, use the main theme accent color for the dot.
+        // For active (but not selected) days, use the main theme accent color for the dot.
         dotColorClass = 'bg-[var(--color-accent-emphasis)]';
       }
     }
@@ -152,7 +152,7 @@ const MiniCalendar = ({ year, month, onDateClick, activeDates, selectedDate, onM
         class={`p-1 w-full aspect-square flex flex-col items-center justify-center rounded-md text-xs transition-colors duration-150
           ${isSelected ? 'bg-primary text-on-primary font-semibold ring-2 ring-primary-focus' :
             isActive ? 'bg-accent-positive/10 text-accent-positive-emphasis hover:bg-accent-positive/20 font-medium' :
-            isToday ? 'bg-hover text-subtle' : 'text-muted'}
+              isToday ? 'bg-hover text-subtle' : 'text-muted'}
           ${(!isActive && !isMainView && !isSelected) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-hover'}
         `}
       >
@@ -201,7 +201,7 @@ const MiniCalendar = ({ year, month, onDateClick, activeDates, selectedDate, onM
 
 // --- Main History Component ---
 const History = () => {
-  const { query } = useLocation(); 
+  const { query, route } = useLocation();
   const [allWorkouts, setAllWorkouts] = useState([]);
   const [displayedWorkouts, setDisplayedWorkouts] = useState([]);
   const [exerciseDefinitions, setExerciseDefinitions] = useState([]);
@@ -258,7 +258,7 @@ const History = () => {
                   if (!isNaN(parsedDate.getTime())) {
                     isValidDate = true;
                   } else if (index < 5) {
-                     console.warn(`[HISTORY] Workout ${index} (id: ${w.id}): Invalid YYYY-MM-DD date: "${originalDateValue}"`);
+                    console.warn(`[HISTORY] Workout ${index} (id: ${w.id}): Invalid YYYY-MM-DD date: "${originalDateValue}"`);
                   }
                 } else if (index < 5) {
                   console.warn(`[HISTORY] Workout ${index} (id: ${w.id}): Invalid date string (not RFC3339 or YYYY-MM-DD): "${originalDateValue}"`);
@@ -299,7 +299,7 @@ const History = () => {
       workoutsToConsider = workoutsToConsider.filter(workout => {
         let exerciseDef = exerciseDefinitions.find(def => def.id === workout.exercise_id);
         if (!exerciseDef && workout.exercise_name) {
-            exerciseDef = exerciseDefinitions.find(def => def.name && workout.exercise_name && def.name.toLowerCase() === workout.exercise_name.toLowerCase());
+          exerciseDef = exerciseDefinitions.find(def => def.name && workout.exercise_name && def.name.toLowerCase() === workout.exercise_name.toLowerCase());
         }
         if (!exerciseDef) return false;
         const workoutMusclesFromDef = parseMuscles(exerciseDef.muscles);
@@ -343,7 +343,7 @@ const History = () => {
       filtered = filtered.filter((workout) => {
         let exerciseDef = exerciseDefinitions.find(def => def.id === workout.exercise_id);
         if (!exerciseDef && workout.exercise_name) {
-            exerciseDef = exerciseDefinitions.find(def => def.name && workout.exercise_name && def.name.toLowerCase() === workout.exercise_name.toLowerCase());
+          exerciseDef = exerciseDefinitions.find(def => def.name && workout.exercise_name && def.name.toLowerCase() === workout.exercise_name.toLowerCase());
         }
         if (!exerciseDef) return false;
         const workoutMusclesFromDef = parseMuscles(exerciseDef.muscles);
@@ -358,10 +358,10 @@ const History = () => {
       filtered = filtered.filter(workout => selectedExerciseNames.has(workout.exercise_name));
     }
     filtered.sort((a, b) => {
-        if (!a.date && !b.date) return 0;
-        if (!a.date) return 1;
-        if (!b.date) return -1;
-        return b.date.getTime() - a.date.getTime();
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return b.date.getTime() - a.date.getTime();
     });
     setDisplayedWorkouts(filtered);
   }, [allWorkouts, selectedExerciseNames, selectedMuscleGroups, exerciseDefinitions, selectedCalendarDate]);
@@ -417,7 +417,10 @@ const History = () => {
   };
 
   const handleSelectWorkout = (workout) => {
-    console.log("Selected workout (placeholder):", workout);
+    if (workout.date) {
+      const dateStr = workout.date.toISOString().split('T')[0];
+      route(`/log?date=${dateStr}`);
+    }
   };
 
   const FilterControls = ({ inModal = false }) => (
@@ -449,7 +452,7 @@ const History = () => {
       </div>
       {(selectedMuscleGroups.size > 0 || selectedExerciseNames.size > 0 || selectedCalendarDate) && (
         <button onClick={clearFilters} class="mt-2 w-full text-xs bg-hover hover:bg-app-alt text-default py-1.5 px-2 rounded-md flex items-center justify-center gap-1.5">
-            <X size={14}/> Clear Filters
+          <X size={14} /> Clear Filters
         </button>
       )}
     </div>
@@ -457,23 +460,23 @@ const History = () => {
 
   if (isLoading) return (
     <div class="p-6 text-center text-subtle flex flex-col items-center justify-center min-h-screen bg-surface">
-        <Loader2 size={48} class="animate-spin text-primary mb-4" />
-        <p class="text-lg">Loading workout history...</p>
+      <Loader2 size={48} class="animate-spin text-primary mb-4" />
+      <p class="text-lg">Loading workout history...</p>
     </div>
   );
 
   if (error) return (
     <div class="p-6 text-center text-accent-destructive bg-accent-destructive/10 rounded-lg border border-accent-destructive/20 m-4">
-        <AlertTriangle class="mx-auto mb-2 text-accent-destructive" size={32} />
-        <p class="font-semibold">Error loading data:</p>
-        <p class="text-sm">{error}</p>
-        <p class="text-xs mt-2 text-muted">Please check the browser console for more technical details.</p>
+      <AlertTriangle class="mx-auto mb-2 text-accent-destructive" size={32} />
+      <p class="font-semibold">Error loading data:</p>
+      <p class="text-sm">{error}</p>
+      <p class="text-xs mt-2 text-muted">Please check the browser console for more technical details.</p>
     </div>
   );
 
   return (
     <div class="flex flex-col sm:flex-row h-full gap-x-6 p-3 sm:p-4 bg-surface min-h-screen">
-       <div class="hidden sm:block sm:w-1/3 lg:w-1/4 xl:w-1/5 flex-shrink-0 space-y-4 self-start sticky top-4">
+      <div class="hidden sm:block sm:w-1/3 lg:w-1/4 xl:w-1/5 flex-shrink-0 space-y-4 self-start sticky top-4">
         <FilterControls />
         <div class="bg-app p-1 rounded-xl border border-divider shadow-themed-md"> {/* Adjusted padding and rounded for consistency */}
           <MiniCalendar year={calendarDate.getFullYear()} month={calendarDate.getMonth()}
@@ -482,122 +485,122 @@ const History = () => {
             onMonthChange={handleMonthChangeForCalendar}
             isMainView={false}
             onDateClick={(dateStr) => {
-                handleCalendarDateClick(dateStr);
-                setCurrentView('list');
-            }}/>
+              handleCalendarDateClick(dateStr);
+              setCurrentView('list');
+            }} />
         </div>
-       </div>
+      </div>
 
-       {showMobileFilters && (
-         <div class="sm:hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={() => setShowMobileFilters(false)}>
-            <div class="fixed top-0 right-0 h-full w-4/5 max-w-xs bg-surface p-5 shadow-themed-xl z-50 overflow-y-auto flex flex-col"
-                onClick={(e) => e.stopPropagation()}>
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold text-default">Filters & Calendar</h2>
-                    <button onClick={() => setShowMobileFilters(false)} class="p-1 text-subtle hover:text-default"><X size={22} /></button>
-                </div>
-                <FilterControls inModal={true} />
-                <div class="mt-5 border-t border-divider pt-4">
-                  <h3 class="font-semibold mb-2 text-sm text-default">Calendar</h3>
-                  <MiniCalendar year={calendarDate.getFullYear()} month={calendarDate.getMonth()}
-                    activeDates={filteredActiveWorkoutDatesInMonth}
-                    selectedDate={selectedCalendarDate}
-                    onMonthChange={handleMonthChangeForCalendar}
-                    isMainView={false} /* Should be false for sidebar/modal calendar */
-                    onDateClick={(dateStr) => {
-                        handleCalendarDateClick(dateStr);
-setCurrentView('list');
-                        setShowMobileFilters(false);
-                    }}/>
-                </div>
+      {showMobileFilters && (
+        <div class="sm:hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={() => setShowMobileFilters(false)}>
+          <div class="fixed top-0 right-0 h-full w-4/5 max-w-xs bg-surface p-5 shadow-themed-xl z-50 overflow-y-auto flex flex-col"
+            onClick={(e) => e.stopPropagation()}>
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-lg font-semibold text-default">Filters & Calendar</h2>
+              <button onClick={() => setShowMobileFilters(false)} class="p-1 text-subtle hover:text-default"><X size={22} /></button>
             </div>
-         </div>
-       )}
-
-       <div class="flex-grow">
-          <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl md:text-2xl font-bold text-default">
-                {currentView === 'list' && selectedCalendarDate
-                    ? `Workouts on ${new Date(selectedCalendarDate + 'T00:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`
-                    : currentView === 'calendar'
-                    ? 'Calendar View'
-                    : "Workout History"}
-            </h1>
-            <div class="flex gap-1.5 items-center">
-               <button onClick={() => setCurrentView('list')} title="List View"
-                class={`p-2 rounded-full transition-colors ${currentView === 'list' ? 'bg-primary/10 text-primary' : 'text-subtle hover:bg-hover'}`}>
-                   <LayoutList size={20} strokeWidth={2.5} />
-               </button>
-               <button onClick={() => setCurrentView('calendar')} title="Calendar View"
-                class={`p-2 rounded-full transition-colors ${currentView === 'calendar' ? 'bg-primary/10 text-primary' : 'text-subtle hover:bg-hover'}`}>
-                   <CalendarIcon size={20} strokeWidth={2.5} />
-               </button>
-               <button class="sm:hidden p-2 rounded-full text-subtle hover:bg-hover"
-                  aria-label="Filters" onClick={() => setShowMobileFilters(true)}>
-                   <SlidersHorizontal size={20} strokeWidth={2.5} />
-               </button>
-            </div>
-          </div>
-
-          {currentView === 'list' && (
-            <>
-              {selectedCalendarDate && (
-                <button onClick={() => setSelectedCalendarDate(null)} class="mb-3 text-sm text-primary hover:underline font-medium">
-                  ← Show all dates
-                </button>
-              )}
-              {displayedWorkouts.length > 0 ? (
-                <div class="space-y-6">
-                  {groupedWorkoutsByDate.map(({ dateIso, workoutsOnDate }) => (
-                    <div key={dateIso} class="bg-app p-4 sm:p-5 rounded-xl border border-divider shadow-themed-md">
-                      <h2 class="text-base sm:text-lg font-semibold text-default mb-3 sm:mb-4 border-b border-divider pb-2 sm:pb-3">
-                        {new Date(dateIso + 'T00:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
-                      </h2>
-                      <div class="space-y-4">
-                        {workoutsOnDate.map(workout => {
-                          let exerciseDef = exerciseDefinitions.find(def => def.id === workout.exercise_id);
-                          if (!exerciseDef && workout.exercise_name) {
-                              exerciseDef = exerciseDefinitions.find(def => def.name && workout.exercise_name && def.name.toLowerCase() === workout.exercise_name.toLowerCase());
-                          }
-                          return <WorkoutCard key={workout.id} workout={workout} exerciseDef={exerciseDef} onSelectWorkout={handleSelectWorkout} />
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div class="text-center py-12 text-subtle bg-app rounded-xl border border-divider shadow-themed-md">
-                  <LayoutList size={40} class="mx-auto mb-3 text-muted" />
-                  <p class="font-medium">
-                    {isLoading ? "Loading..." : allWorkouts.length === 0 ? "No workouts found in your history." : "No workouts match your current filters."}
-                  </p>
-                  {(selectedMuscleGroups.size > 0 || selectedExerciseNames.size > 0 || selectedCalendarDate) && !isLoading && allWorkouts.length > 0 && (
-                    <button onClick={clearFilters} class="mt-4 text-sm bg-primary text-on-primary hover:bg-primary/90 py-1.5 px-3.5 rounded-md font-medium">
-                        Clear All Filters
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {currentView === 'calendar' && (
-            <div class="bg-app p-3 sm:p-4 rounded-xl border border-divider shadow-themed-md">
+            <FilterControls inModal={true} />
+            <div class="mt-5 border-t border-divider pt-4">
+              <h3 class="font-semibold mb-2 text-sm text-default">Calendar</h3>
               <MiniCalendar year={calendarDate.getFullYear()} month={calendarDate.getMonth()}
                 activeDates={filteredActiveWorkoutDatesInMonth}
                 selectedDate={selectedCalendarDate}
                 onMonthChange={handleMonthChangeForCalendar}
-                isMainView={true}
+                isMainView={false} /* Should be false for sidebar/modal calendar */
                 onDateClick={(dateStr) => {
-                    handleCalendarDateClick(dateStr);
-                    setCurrentView('list');
-                }}/>
-              <p class="mt-3 text-xs text-center text-muted">
-                Select a date to view workouts. Dates with workouts (matching current filters) are highlighted.
-              </p>
+                  handleCalendarDateClick(dateStr);
+                  setCurrentView('list');
+                  setShowMobileFilters(false);
+                }} />
             </div>
-          )}
-       </div>
+          </div>
+        </div>
+      )}
+
+      <div class="flex-grow">
+        <div class="flex justify-between items-center mb-4">
+          <h1 class="text-xl md:text-2xl font-bold text-default">
+            {currentView === 'list' && selectedCalendarDate
+              ? `Workouts on ${new Date(selectedCalendarDate + 'T00:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`
+              : currentView === 'calendar'
+                ? 'Calendar View'
+                : "Workout History"}
+          </h1>
+          <div class="flex gap-1.5 items-center">
+            <button onClick={() => setCurrentView('list')} title="List View"
+              class={`p-2 rounded-full transition-colors ${currentView === 'list' ? 'bg-primary/10 text-primary' : 'text-subtle hover:bg-hover'}`}>
+              <LayoutList size={20} strokeWidth={2.5} />
+            </button>
+            <button onClick={() => setCurrentView('calendar')} title="Calendar View"
+              class={`p-2 rounded-full transition-colors ${currentView === 'calendar' ? 'bg-primary/10 text-primary' : 'text-subtle hover:bg-hover'}`}>
+              <CalendarIcon size={20} strokeWidth={2.5} />
+            </button>
+            <button class="sm:hidden p-2 rounded-full text-subtle hover:bg-hover"
+              aria-label="Filters" onClick={() => setShowMobileFilters(true)}>
+              <SlidersHorizontal size={20} strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+
+        {currentView === 'list' && (
+          <>
+            {selectedCalendarDate && (
+              <button onClick={() => setSelectedCalendarDate(null)} class="mb-3 text-sm text-primary hover:underline font-medium">
+                ← Show all dates
+              </button>
+            )}
+            {displayedWorkouts.length > 0 ? (
+              <div class="space-y-6">
+                {groupedWorkoutsByDate.map(({ dateIso, workoutsOnDate }) => (
+                  <div key={dateIso} class="bg-app p-4 sm:p-5 rounded-xl border border-divider shadow-themed-md">
+                    <h2 class="text-base sm:text-lg font-semibold text-default mb-3 sm:mb-4 border-b border-divider pb-2 sm:pb-3">
+                      {new Date(dateIso + 'T00:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                    </h2>
+                    <div class="space-y-4">
+                      {workoutsOnDate.map(workout => {
+                        let exerciseDef = exerciseDefinitions.find(def => def.id === workout.exercise_id);
+                        if (!exerciseDef && workout.exercise_name) {
+                          exerciseDef = exerciseDefinitions.find(def => def.name && workout.exercise_name && def.name.toLowerCase() === workout.exercise_name.toLowerCase());
+                        }
+                        return <WorkoutCard key={workout.id} workout={workout} exerciseDef={exerciseDef} onSelectWorkout={handleSelectWorkout} />
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div class="text-center py-12 text-subtle bg-app rounded-xl border border-divider shadow-themed-md">
+                <LayoutList size={40} class="mx-auto mb-3 text-muted" />
+                <p class="font-medium">
+                  {isLoading ? "Loading..." : allWorkouts.length === 0 ? "No workouts found in your history." : "No workouts match your current filters."}
+                </p>
+                {(selectedMuscleGroups.size > 0 || selectedExerciseNames.size > 0 || selectedCalendarDate) && !isLoading && allWorkouts.length > 0 && (
+                  <button onClick={clearFilters} class="mt-4 text-sm bg-primary text-on-primary hover:bg-primary/90 py-1.5 px-3.5 rounded-md font-medium">
+                    Clear All Filters
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {currentView === 'calendar' && (
+          <div class="bg-app p-3 sm:p-4 rounded-xl border border-divider shadow-themed-md">
+            <MiniCalendar year={calendarDate.getFullYear()} month={calendarDate.getMonth()}
+              activeDates={filteredActiveWorkoutDatesInMonth}
+              selectedDate={selectedCalendarDate}
+              onMonthChange={handleMonthChangeForCalendar}
+              isMainView={true}
+              onDateClick={(dateStr) => {
+                handleCalendarDateClick(dateStr);
+                setCurrentView('list');
+              }} />
+            <p class="mt-3 text-xs text-center text-muted">
+              Select a date to view workouts. Dates with workouts (matching current filters) are highlighted.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
