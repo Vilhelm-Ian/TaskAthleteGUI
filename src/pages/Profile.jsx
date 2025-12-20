@@ -2,6 +2,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
+import {WeightChart} from "../components/WeightChart"
 import List from 'preact-material-components/List';
 import Switch from 'preact-material-components/Switch';
 import Select from 'preact-material-components/Select';
@@ -37,6 +38,7 @@ const SettingsItem = ({ icon: Icon, primary, secondary, actionComponent, onClick
 );
 
 const Profile = () => {
+  const [weightHistory, setWeightHistory] = useState([]);
   const [config, setConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,6 +54,15 @@ const Profile = () => {
   
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState({ text: '', type: '' });
+
+  const fetchWeightHistory = useCallback(async () => {
+  const history = await invoke('get_body_weights');
+      setWeightHistory(history.reverse()); // Ensure chronological order
+  }, []);
+
+    useEffect(() => {
+      fetchWeightHistory();
+    }, [fetchWeightHistory]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -105,6 +116,7 @@ const Profile = () => {
     try {
       await invoke('add_bodyweight_entry', { weight: weightVal });
       setAddBodyweightMessage({ text: `Bodyweight ${weightVal} ${config.units === 'metric' ? 'kg' : 'lbs'} logged.`, type: 'success' });
+      await fetchWeightHistory();
       setNewBodyweight('');
       await fetchConfig(); // Re-fetch to update latest recorded weight display
     } catch (err) {
@@ -222,6 +234,16 @@ const Profile = () => {
                             Log your current bodyweight.
                             {config.current_bodyweight && <span class="block mt-1">Latest: {config.current_bodyweight} {config.units === 'metric' ? 'kg' : 'lbs'}</span>}
                         </p>
+                    </div>
+                    <div>
+                        <h3 class="text-xs uppercase text-secondary font-semibold mb-2 px-4 sm:px-0">Bodyweight Progress</h3>
+                        <div class="bg-secondary rounded-md border border-border-primary p-4">
+                            <WeightChart 
+                              data={weightHistory} 
+                              targetWeight={config.target_bodyweight} 
+                              unit={config.units === 'metric' ? 'kg' : 'lbs'} 
+                            />
+                        </div>
                     </div>
                     <div class="flex items-center gap-2 w-full">
                         <Weight class="w-5 h-5 text-secondary mr-2 flex-shrink-0" strokeWidth={2} />
