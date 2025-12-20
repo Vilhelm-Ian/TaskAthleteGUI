@@ -186,6 +186,7 @@ const AddExerciseModal = ({
       } else { // ADD MODE
         const addPayload = {
           exercise_identifier: selectedExercise.name, sets: 1, 
+          date: `${currentDateKey}T12:00:00Z`,
           reps: selectedExercise.log_reps ? parseNumericInput(logData.reps, parseInt) : undefined,
           weight: selectedExercise.log_weight ? parseNumericInput(logData.weight, parseFloat) : undefined,
           duration: selectedExercise.log_duration ? parseNumericInput(logData.duration, parseInt) : undefined,
