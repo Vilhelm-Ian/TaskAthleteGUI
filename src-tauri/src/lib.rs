@@ -1,6 +1,8 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize}; // Serialize might be needed if any local structs are returned
 use std::sync::{Arc, Mutex};
+use std::fs;
+use tauri_plugin_dialog::DialogExt;
 // For HashMap in list_aliases, though often implicitly available via std prelude
 // use std::collections::HashMap; // Explicit import not strictly necessary for HashMap usually
 
@@ -141,8 +143,58 @@ fn parse_exercise_type(type_str: &str) -> Result<ExerciseType, String> {
 // --- Tauri Commands ---
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+async fn export_database(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    // 1. SCOPE THE LOCK: Get the path and drop the lock immediately.
+    // This is required because std::sync::MutexGuard cannot be held across await points 
+    // or long running async operations safely.
+    let db_path = {
+        let service = state.lock().map_err(|e| e.to_string())?;
+        service.db_path.clone()
+    }; 
+
+    // 2. Open Dialog on background thread (thanks to async)
+    // The UI thread is now free to show the picker.
+    let file_path = app.dialog()
+        .file()
+        .set_file_name("workouts_backup.sqlite")
+        .blocking_save_file();
+
+    // 3. Perform Copy
+    if let Some(path) = file_path {
+        // Handle path conversion error
+        let dest_path = path.into_path().map_err(|e| format!("Failed to resolve export path: {}", e))?;
+        
+        // Perform the copy
+        std::fs::copy(db_path, dest_path).map_err(|e| e.to_string())?;
+        return Ok("Database exported successfully".into());
+    }
+    
+    Err("Export cancelled".into())
+}
+
+// Note the `async` keyword here
+#[tauri::command]
+async fn import_database(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    // 1. SCOPE THE LOCK
+    let db_path = {
+        let service = state.lock().map_err(|e| e.to_string())?;
+        service.db_path.clone()
+    }; 
+
+    // 2. Open Dialog
+    let file_path = app.dialog()
+        .file()
+        .add_filter("SQLite Database", &["sqlite", "db"])
+        .blocking_pick_file();
+
+    // 3. Perform Copy
+    if let Some(path) = file_path {
+        let source_path = path.into_path().map_err(|e| format!("Failed to resolve import path: {}", e))?;
+        std::fs::copy(source_path, db_path).map_err(|e| e.to_string())?;
+        return Ok("Database imported successfully. Please restart the app.".into());
+    }
+
+    Err("Import cancelled".into())
 }
 
 
@@ -677,8 +729,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(app_state)
         .plugin(tauri_plugin_opener::init()) // Added from your initial lib.rs
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            greet, // Added from your initial lib.rs
             get_config,
             save_config,
             get_workout_dates_for_month,
@@ -710,7 +762,9 @@ pub fn run() {
             get_previous_workout_details,
             add_bodyweight_entry,
             perform_sync,
-            set_sync_server_url
+            set_sync_server_url,
+            export_database,
+            import_database
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
