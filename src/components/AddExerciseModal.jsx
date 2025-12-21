@@ -1,19 +1,18 @@
-// src-ui/components/AddExerciseModal.jsx
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Loader2, AlertTriangle } from 'lucide-preact'; // Removed unused Square, CheckSquare, Edit3
+import { X, Loader2, AlertTriangle } from 'lucide-preact'; 
 import CreateExerciseModal from './CreateExerciseModal';
 import ExerciseSelectionStep from './ExerciseSelectionStep';
 import LogDetailsStep from './LogDetailsStep';
 
 const EXERCISE_TYPES_CONST = { BODYWEIGHT: 'BodyWeight' };
 
-// Helper to safely parse numeric inputs from form strings
+// Helper to safely parse numeric inputs
 const parseNumericInput = (value, parser) => {
-    if (value == null || String(value).trim() === "") return undefined; // Empty strings become undefined
+    if (value == null || String(value).trim() === "") return undefined;
     const parsed = parser(value);
-    return isNaN(parsed) ? undefined : parsed; // NaN results also become undefined
+    return isNaN(parsed) ? undefined : parsed;
 };
 
 const AddExerciseModal = ({ 
@@ -27,18 +26,17 @@ const AddExerciseModal = ({
 }) => {
   const [step, setStep] = useState(1);
   const [count, setCount] = useState(1);
-  
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [logData, setLogData] = useState({ reps: '', weight: '', duration: '', distance: '' });
-  
   const [configLoading, setConfigLoading] = useState(true);
   const [userBodyweight, setUserBodyweight] = useState(null);
   const [userBodyweightUnit, setUserBodyweightUnit] = useState('kg');
-  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Edit/Create Modal State
   const [isCreateExerciseModalOpen, setIsCreateExerciseModalOpen] = useState(false);
+  const [exerciseToEdit, setExerciseToEdit] = useState(null);
   const [availableMusclesForCreate, setAvailableMusclesForCreate] = useState([]);
 
   const isEditMode = !!editingWorkoutLogId;
@@ -49,7 +47,7 @@ const AddExerciseModal = ({
       const configData = await invoke('get_config');
       if (configData) {
         let bodyweights = await invoke("get_body_weights") 
-        setUserBodyweight(bodyweights[0][2])
+        if(bodyweights && bodyweights.length > 0) setUserBodyweight(bodyweights[0][2]);
         if (configData.units) {
             const unitSystem = typeof configData.units === 'string' ? configData.units.toLowerCase() : (configData.units.weight || 'kg');
             setUserBodyweightUnit(unitSystem === 'imperial' ? 'lbs' : 'kg');
@@ -87,35 +85,33 @@ const AddExerciseModal = ({
 
   const handleExerciseSelectFromStep1 = useCallback(async (exerciseDef) => {
     setSelectedExercise(exerciseDef);
-    // Reset logData, then try to pre-fill with previous if not "Add Set" or "Edit"
     const baseLogData = { reps: '', weight: '', duration: '', distance: '' };
     setLogData(baseLogData);
     setStep(2);
     setError(null);
 
-    if (exerciseDef && exerciseDef.name && !initialLogDataProp) { // Not "Add Set" or "Edit"
+    if (exerciseDef && exerciseDef.name && !initialLogDataProp) {
         try {
             const previousWorkouts = await invoke('get_previous_workout_details', {
                 payload: { identifier: exerciseDef.name, n: 1 }
             });
             if (previousWorkouts && previousWorkouts.length > 0) {
                 const prev = previousWorkouts[0];
-                const newLogData = {}; // Build from scratch to avoid stale data
+                const newLogData = {}; 
                 if (exerciseDef.log_reps && prev.reps != null) newLogData.reps = prev.reps.toString();
                 if (exerciseDef.log_weight && prev.weight != null) newLogData.weight = prev.weight.toString();
                 if (exerciseDef.log_duration && prev.duration_minutes != null) newLogData.duration = prev.duration_minutes.toString();
                 if (exerciseDef.log_distance && prev.distance != null) newLogData.distance = prev.distance.toString();
-                setLogData(current => ({...baseLogData, ...newLogData})); // Apply over base
+                setLogData(current => ({...baseLogData, ...newLogData}));
             }
         } catch (err) {
-            console.warn(`Could not fetch previous workout data for '${exerciseDef.name}':`, err);
+            console.warn(`Could not fetch previous workout data:`, err);
         }
     }
   }, [initialLogDataProp]);
 
   const handleLogDataChange = useCallback((e) => {
     const { name, value } = e.target;
-    // Basic validation for numeric fields can be done here if desired, or rely on parseNumericInput
     setLogData(prev => ({ ...prev, [name]: value }));
   }, []);
 
@@ -167,7 +163,7 @@ const AddExerciseModal = ({
         } else { 
             if (weightFieldChangedInForm && selectedExercise.log_weight) {
                  if (String(logData.weight).trim() === "") {
-                    editPayloadRaw.new_weight = null; // Explicitly cleared, send null to backend Option<f64>
+                    editPayloadRaw.new_weight = null; 
                 } else {
                     editPayloadRaw.new_weight = parseNumericInput(logData.weight, parseFloat);
                 }
@@ -183,7 +179,7 @@ const AddExerciseModal = ({
         await invoke('edit_workout', { params: finalEditPayload });
         onActionCompleted(null);
 
-      } else { // ADD MODE
+      } else { 
         const addPayload = {
           exercise_identifier: selectedExercise.name, sets: 1, 
           date: `${currentDateKey}T12:00:00Z`,
@@ -210,66 +206,48 @@ const AddExerciseModal = ({
     } finally { setIsSubmitting(false); }
   };
 
-  const handleOpenCreateExerciseModal = () => setIsCreateExerciseModalOpen(true);
-  
-  const handleExerciseCreated = () => {
-    setIsCreateExerciseModalOpen(false);
-    setCount(v => v + 1)
-    // ExerciseSelectionStep will typically re-fetch on its own if re-mounted or a key changes.
-    // For now, parent LogWorkout handles refreshing the entire view which re-opens this modal fresh.
+  const handleOpenCreateExerciseModal = () => {
+      setExerciseToEdit(null);
+      setIsCreateExerciseModalOpen(true);
+  };
+
+  const handleEditExercise = (exercise) => {
+      setExerciseToEdit(exercise);
+      setIsCreateExerciseModalOpen(true);
   };
   
+  const handleExerciseSaved = () => {
+    setIsCreateExerciseModalOpen(false);
+    setExerciseToEdit(null);
+    setCount(v => v + 1); // Triggers refresh in step 1
+  };
+
   const handleStep1InitialDataLoaded = useCallback((muscles) => {
     setAvailableMusclesForCreate(muscles);
   }, []);
 
   if (!isOpen) return null;
-  
-  const getEffectiveTitle = () => {
-    if (step === 1) return 'Select Exercise';
-    if (isEditMode) return `Edit Log: ${selectedExercise?.name || 'Details'}`;
-    return `Log: ${selectedExercise?.name || 'Details'}`;
-  };
-  const getSubmitButtonText = () => isSubmitting ? (isEditMode ? "Saving..." : "Logging...") : (isEditMode ? "Save Changes" : "Log Workout");
-  
-  // Show back button if in step 2 AND it wasn't an "Add Set" or "Edit Set" direct entry.
-  // This means preSelectedExerciseProp would be null if user navigated from step 1.
+  const getEffectiveTitle = () => step === 1 ? 'Select Exercise' : (isEditMode ? `Edit Log: ${selectedExercise?.name}` : `Log: ${selectedExercise?.name}`);
   const showHeaderBackButton = step === 2 && !preSelectedExerciseProp;
-
 
   return (
     <>
       <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
         <div className="bg-surface rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-subtle">
           <div className="flex items-center justify-between p-4 sm:p-5 border-b border-subtle bg-app">
-            <h2 className="text-xl sm:text-2xl font-semibold text-default">
-              <span className="flex items-center">
+            <h2 className="text-xl sm:text-2xl font-semibold text-default flex items-center">
                 {showHeaderBackButton && (
-                    <button 
-                        type="button" 
-                        onClick={() => { 
-                            setStep(1); 
-                            setError(null); 
-                            setSelectedExercise(null); // Clear selection when going back
-                            setLogData({ reps: '', weight: '', duration: '', distance: '' }); // Reset form
-                        }} 
-                        className="mr-3 p-1.5 rounded-full text-subtle hover:bg-surface-alt hover:text-default transition-colors" 
-                        aria-label="Back to exercise selection"
-                    >
-                    </button>
+                    <button type="button" onClick={() => { setStep(1); setError(null); setSelectedExercise(null); setLogData({ reps: '', weight: '', duration: '', distance: '' }); }} className="mr-3 p-1.5 rounded-full text-subtle hover:bg-surface-alt hover:text-default transition-colors" aria-label="Back"></button>
                 )}
                 {getEffectiveTitle()}
-              </span>
             </h2>
             <button onClick={onClose} className="p-2 rounded-full text-muted hover:bg-surface-alt hover:text-subtle transition-colors" aria-label="Close modal"><X size={24} /></button>
           </div>
 
           <div className="p-4 sm:p-6 flex-grow overflow-y-auto">
-            {error && (step === 2 || !selectedExercise) && ( // Show general error in step 2 or if step 1 failed critically before ExerciseSelectionStep renders its own error
+            {error && (step === 2 || !selectedExercise) && ( 
                 <div className="mb-4 bg-accent-destructive/10 border border-accent-destructive/30 p-3 rounded-lg text-accent-destructive flex items-start shadow-sm">
-                <AlertTriangle size={20} className="mr-2 mt-0.5 text-accent-destructive flex-shrink-0" />
-                <p className="text-sm">{error}</p>
-                </div>
+                <AlertTriangle size={20} className="mr-2 mt-0.5 text-accent-destructive flex-shrink-0" /> <p className="text-sm">{error}</p> </div>
             )}
 
             {step === 1 && (
@@ -277,50 +255,24 @@ const AddExerciseModal = ({
                 count={count}
                 onExerciseSelect={handleExerciseSelectFromStep1}
                 onOpenCreateExerciseModal={handleOpenCreateExerciseModal}
+                onEditExercise={handleEditExercise} 
+                onDeleteSuccess={() => setCount(c => c + 1)}
                 onInitialDataLoaded={handleStep1InitialDataLoaded} 
               />
             )}
 
             {step === 2 && selectedExercise && !configLoading && (
               <>
-                <LogDetailsStep
-                  selectedExercise={selectedExercise}
-                  logData={logData}
-                  onLogDataChange={handleLogDataChange}
-                  userBodyweight={userBodyweight}
-                  userBodyweightUnit={userBodyweightUnit}
-                />
+                <LogDetailsStep selectedExercise={selectedExercise} logData={logData} onLogDataChange={handleLogDataChange} userBodyweight={userBodyweight} userBodyweightUnit={userBodyweightUnit} />
                 <div className="flex items-center justify-end gap-3 pt-4 mt-3 border-t border-subtle">
-                  <button 
-                    type="button" 
-                    onClick={() => { 
-                        setStep(1); 
-                        setError(null); 
-                        setSelectedExercise(null);
-                        setLogData({ reps: '', weight: '', duration: '', distance: '' }); 
-                    }} 
-                    className="px-5 py-2 text-sm font-medium text-default bg-app hover:bg-surface-alt border border-strong rounded-lg shadow-sm transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={handleSubmitWorkout} 
-                    disabled={isSubmitting || !selectedExercise} 
-                    className="px-6 py-2.5 text-sm font-semibold text-on-accent bg-accent-emphasis hover:bg-accent-emphasis-hover rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
-                  >
-                    {isSubmitting ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
-                    {getSubmitButtonText()}
+                  <button type="button" onClick={() => { setStep(1); setError(null); setSelectedExercise(null); }} className="px-5 py-2 text-sm font-medium text-default bg-app hover:bg-surface-alt border border-strong rounded-lg shadow-sm transition-colors">Back</button>
+                  <button type="button" onClick={handleSubmitWorkout} disabled={isSubmitting || !selectedExercise} className="px-6 py-2.5 text-sm font-semibold text-on-accent bg-accent-emphasis hover:bg-accent-emphasis-hover rounded-lg shadow-md transition-colors disabled:opacity-60 flex items-center justify-center min-w-[120px]">
+                    {isSubmitting ? <Loader2 size={18} className="animate-spin mr-2" /> : null} {isSubmitting ? (isEditMode ? "Saving..." : "Logging...") : (isEditMode ? "Save Changes" : "Log Workout")}
                   </button>
                 </div>
               </>
             )}
-            {step === 2 && configLoading && ( // Show loader if config is loading for step 2
-                 <div className="flex justify-center py-8"><Loader2 size={36} className="animate-spin text-accent-emphasis" /> <span className="ml-2">Loading details...</span></div>
-            )}
-             {step === 2 && !selectedExercise && !configLoading && ( // Fallback if somehow in step 2 without selection and not loading config
-                <p className="text-center text-muted py-6">Please select an exercise first or an error occurred.</p> 
-            )}
+             {step === 2 && configLoading && (<div className="flex justify-center py-8"><Loader2 size={36} className="animate-spin text-accent-emphasis" /> <span className="ml-2">Loading details...</span></div>)}
           </div>
         </div>
       </div>
@@ -328,8 +280,9 @@ const AddExerciseModal = ({
       <CreateExerciseModal
         isOpen={isCreateExerciseModalOpen}
         onClose={() => setIsCreateExerciseModalOpen(false)}
-        onExerciseCreated={handleExerciseCreated}
+        onExerciseCreated={handleExerciseSaved}
         availableMuscles={availableMusclesForCreate}
+        exerciseToEdit={exerciseToEdit}
       />
     </>
   );

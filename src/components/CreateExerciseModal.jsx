@@ -1,8 +1,7 @@
-// CreateExerciseModal.jsx
 import { h } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Loader2, AlertTriangle, CheckSquare, Square } from 'lucide-preact';
+import { X, Loader2, AlertTriangle, CheckSquare } from 'lucide-preact';
 
 const EXERCISE_TYPES = [
   { value: 'Resistance', label: 'Resistance (Weights)' },
@@ -10,10 +9,10 @@ const EXERCISE_TYPES = [
   { value: 'Cardio', label: 'Cardio' },
 ];
 
-const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMuscles: propAvailableMuscles }) => {
+const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, exerciseToEdit }) => {
   const [exerciseName, setExerciseName] = useState('');
-  const [exerciseType, setExerciseType] = useState(''); // 'Resistance', 'BodyWeight', 'Cardio'
-  const [musclesTargeted, setMusclesTargeted] = useState(''); // Comma-separated string
+  const [exerciseType, setExerciseType] = useState('');
+  const [musclesTargeted, setMusclesTargeted] = useState('');
   const [logConfig, setLogConfig] = useState({
     reps: false,
     weight: false,
@@ -24,44 +23,46 @@ const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMusc
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // For muscle input suggestions (optional enhancement, simple text for now)
-  // const [allMuscles, setAllMuscles] = useState([]);
-  // useEffect(() => {
-  //   if (propAvailableMuscles) {
-  //     setAllMuscles(propAvailableMuscles);
-  //   } else {
-  //     invoke('list_all_muscles').then(setAllMuscles).catch(console.error);
-  //   }
-  // }, [propAvailableMuscles]);
-
-
   useEffect(() => {
-    // Reset form when modal opens
     if (isOpen) {
-      setExerciseName('');
-      setExerciseType('');
-      setMusclesTargeted('');
-      setLogConfig({ reps: false, weight: false, duration: false, distance: false });
       setError(null);
       setSuccessMessage(null);
       setIsSubmitting(false);
-    }
-  }, [isOpen]);
 
-  useEffect(() => {
-    // Set default loggable metrics based on exercise type
-    let newLogConfig = { reps: false, weight: false, duration: false, distance: false };
-    if (exerciseType === 'BodyWeight') {
-      newLogConfig.reps = true;
-    } else if (exerciseType === 'Resistance') {
-      newLogConfig.reps = true;
-      newLogConfig.weight = true;
-    } else if (exerciseType === 'Cardio') {
-      newLogConfig.duration = true;
-      // newLogConfig.distance = true; // Optional: enable distance for cardio by default
+      if (exerciseToEdit) {
+        setExerciseName(exerciseToEdit.name);
+        setExerciseType(exerciseToEdit.type_ || exerciseToEdit.type);
+        setMusclesTargeted(exerciseToEdit.muscles || '');
+        setLogConfig({
+          reps: exerciseToEdit.log_reps,
+          weight: exerciseToEdit.log_weight,
+          duration: exerciseToEdit.log_duration,
+          distance: exerciseToEdit.log_distance,
+        });
+      } else {
+        setExerciseName('');
+        setExerciseType('');
+        setMusclesTargeted('');
+        setLogConfig({ reps: false, weight: false, duration: false, distance: false });
+      }
     }
-    setLogConfig(newLogConfig);
-  }, [exerciseType]);
+  }, [isOpen, exerciseToEdit]);
+
+  // If type changes in create mode, set defaults. In edit mode, preserve unless user manually changes config.
+  useEffect(() => {
+    if (!exerciseToEdit && exerciseType && isOpen) {
+       let newLogConfig = { reps: false, weight: false, duration: false, distance: false };
+       if (exerciseType === 'BodyWeight') {
+         newLogConfig.reps = true;
+       } else if (exerciseType === 'Resistance') {
+         newLogConfig.reps = true;
+         newLogConfig.weight = true;
+       } else if (exerciseType === 'Cardio') {
+         newLogConfig.duration = true;
+       }
+       setLogConfig(newLogConfig);
+    }
+  }, [exerciseType, isOpen, exerciseToEdit]);
 
   const handleLogConfigChange = (metric) => {
     setLogConfig(prev => ({ ...prev, [metric]: !prev[metric] }));
@@ -72,43 +73,54 @@ const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMusc
     setError(null);
     setSuccessMessage(null);
 
-    if (!exerciseName.trim()) {
-      setError("Exercise name is required.");
-      return;
-    }
-    if (!exerciseType) {
-      setError("Exercise type is required.");
-      return;
-    }
-    // Basic validation for muscles: allow empty, or non-empty must not be just commas/spaces
+    if (!exerciseName.trim()) { setError("Exercise name is required."); return; }
+    if (!exerciseType) { setError("Exercise type is required."); return; }
+    
     const cleanedMuscles = musclesTargeted.split(',').map(m => m.trim()).filter(Boolean).join(', ');
-
-
     setIsSubmitting(true);
 
-    const payload = {
-      name: exerciseName.trim(),
-      typeStr: exerciseType, 
-      muscles: cleanedMuscles ? cleanedMuscles : null,
-      logReps: logConfig.reps,     
-      logWeight: logConfig.weight,   
-      logDuration: logConfig.duration, 
-      logDistance: logConfig.distance, 
-    };
-
-
     try {
-      const newExerciseId = await invoke('create_exercise', payload);
-      setSuccessMessage(`Exercise "${payload.name}" created successfully!`); // Removed ID for simplicity
-      if (onExerciseCreated) {
-        onExerciseCreated(payload.name); 
+      if (exerciseToEdit) {
+        // Edit Mode
+        // We only send newMuscles if it changed. Sending null clears it, undefined/missing ignores it.
+        const originalMuscles = exerciseToEdit.muscles || '';
+        let newMusclesArg = undefined;
+        if (cleanedMuscles !== originalMuscles) {
+             newMusclesArg = cleanedMuscles || null; // null to clear if empty
+        }
+
+        await invoke('edit_exercise', {
+            identifier: exerciseToEdit.name,
+            newName: exerciseName.trim() === exerciseToEdit.name ? null : exerciseName.trim(),
+            newTypeStr: exerciseType === (exerciseToEdit.type_ || exerciseToEdit.type) ? null : exerciseType,
+            newMuscles: newMusclesArg,
+            logReps: logConfig.reps,
+            logWeight: logConfig.weight,
+            logDuration: logConfig.duration,
+            logDistance: logConfig.distance,
+        });
+        setSuccessMessage(`Exercise updated successfully!`);
+      } else {
+        // Create Mode
+        const payload = {
+            name: exerciseName.trim(),
+            typeStr: exerciseType, 
+            muscles: cleanedMuscles ? cleanedMuscles : null,
+            logReps: logConfig.reps,     
+            logWeight: logConfig.weight,   
+            logDuration: logConfig.duration, 
+            logDistance: logConfig.distance, 
+        };
+        await invoke('create_exercise', payload);
+        setSuccessMessage(`Exercise created successfully!`);
       }
-      setTimeout(() => {
-         onClose(); 
-      }, 1500);
+
+      if (onExerciseCreated) onExerciseCreated();
+      
+      setTimeout(() => { onClose(); }, 1500);
     } catch (err) {
-      console.error("Create exercise error:", err);
-      setError(typeof err === 'string' ? err : (err.message || "Failed to create exercise."));
+      console.error("Save exercise error:", err);
+      setError(typeof err === 'string' ? err : (err.message || "Failed to save exercise."));
     } finally {
       setIsSubmitting(false);
     }
@@ -120,12 +132,10 @@ const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMusc
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[101] backdrop-blur-sm">
       <div className="bg-surface rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-subtle">
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-subtle bg-app">
-          <h2 className="text-xl sm:text-2xl font-semibold text-default">Create New Exercise</h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full text-muted hover:bg-surface-alt hover:text-subtle transition-colors"
-            aria-label="Close modal"
-          >
+          <h2 className="text-xl sm:text-2xl font-semibold text-default">
+            {exerciseToEdit ? 'Edit Exercise' : 'Create New Exercise'}
+          </h2>
+          <button onClick={onClose} className="p-2 rounded-full text-muted hover:bg-surface-alt hover:text-subtle transition-colors">
             <X size={24} />
           </button>
         </div>
@@ -146,44 +156,20 @@ const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMusc
 
           <div>
             <label htmlFor="exerciseName" className="block text-sm font-medium text-default mb-1">Exercise Name *</label>
-            <input
-              type="text" name="exerciseName" id="exerciseName"
-              value={exerciseName} onInput={(e) => setExerciseName(e.target.value)}
-              placeholder="e.g., Barbell Squat"
-              required
-              className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-            />
+            <input type="text" id="exerciseName" value={exerciseName} onInput={(e) => setExerciseName(e.target.value)} required className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm" />
           </div>
 
           <div>
             <label htmlFor="exerciseType" className="block text-sm font-medium text-default mb-1">Exercise Type *</label>
-            <select
-              name="exerciseType" id="exerciseType"
-              value={exerciseType} onChange={(e) => setExerciseType(e.target.value)}
-              required
-              className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm appearance-none"
-            >
+            <select id="exerciseType" value={exerciseType} onChange={(e) => setExerciseType(e.target.value)} required className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm appearance-none">
               <option value="" disabled className="text-muted">Select type...</option>
-              {EXERCISE_TYPES.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
+              {EXERCISE_TYPES.map(type => (<option key={type.value} value={type.value}>{type.label}</option>))}
             </select>
           </div>
 
           <div>
-            <label htmlFor="musclesTargeted" className="block text-sm font-medium text-default mb-1">
-              Muscles Targeted <span className="text-xs text-muted">(comma-separated, e.g., Quads, Glutes)</span>
-            </label>
-            <input
-              type="text" name="musclesTargeted" id="musclesTargeted"
-              value={musclesTargeted} onInput={(e) => setMusclesTargeted(e.target.value)}
-              placeholder="e.g., Chest, Triceps, Shoulders"
-              className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-            />
-            {/* Optional: Display available muscles for reference or selection */}
-            {/* {allMuscles.length > 0 && (
-              <p className="text-xs text-muted mt-1">Available: {allMuscles.join(', ')}</p>
-            )} */}
+            <label htmlFor="musclesTargeted" className="block text-sm font-medium text-default mb-1">Muscles Targeted <span className="text-xs text-muted">(comma-separated)</span></label>
+            <input type="text" id="musclesTargeted" value={musclesTargeted} onInput={(e) => setMusclesTargeted(e.target.value)} className="w-full p-2.5 bg-surface text-default border border-subtle rounded-lg focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm" />
           </div>
 
           <div>
@@ -191,12 +177,7 @@ const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMusc
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {Object.keys(logConfig).map(metric => (
                 <label key={metric} className="flex items-center space-x-2 cursor-pointer p-1.5 rounded-md hover:bg-surface-alt">
-                  <input
-                    type="checkbox"
-                    checked={logConfig[metric]}
-                    onChange={() => handleLogConfigChange(metric)}
-                    className="h-5 w-5 accent-[var(--color-accent-emphasis)] border-subtle rounded focus:ring-2 focus:ring-offset-1 focus:ring-offset-[var(--color-bg-surface)] focus:ring-accent-subtle-bg"
-                  />
+                  <input type="checkbox" checked={logConfig[metric]} onChange={() => handleLogConfigChange(metric)} className="h-5 w-5 accent-[var(--color-accent-emphasis)] border-subtle rounded" />
                   <span className="text-sm text-default capitalize">{metric}</span>
                 </label>
               ))}
@@ -204,21 +185,10 @@ const CreateExerciseModal = ({ isOpen, onClose, onExerciseCreated, availableMusc
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-3 mt-2 border-t border-subtle">
-             <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-5 py-2 text-sm font-medium text-default bg-app hover:bg-surface-alt border border-strong rounded-lg shadow-sm transition-colors disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || successMessage}
-              className="px-6 py-2.5 text-sm font-semibold text-on-accent bg-accent-emphasis hover:bg-accent-emphasis-hover rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
-            >
+             <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2 text-sm font-medium text-default bg-app hover:bg-surface-alt border border-strong rounded-lg shadow-sm transition-colors disabled:opacity-60">Cancel</button>
+             <button type="submit" disabled={isSubmitting || successMessage} className="px-6 py-2.5 text-sm font-semibold text-on-accent bg-accent-emphasis hover:bg-accent-emphasis-hover rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]">
               {isSubmitting ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
-              {successMessage ? 'Created!' : 'Create Exercise'}
+              {successMessage ? 'Saved!' : (exerciseToEdit ? 'Save Changes' : 'Create Exercise')}
             </button>
           </div>
         </form>
