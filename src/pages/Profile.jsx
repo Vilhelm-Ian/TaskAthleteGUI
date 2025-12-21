@@ -6,6 +6,8 @@ import { WeightChart } from "../components/WeightChart"
 import List from 'preact-material-components/List';
 import Switch from 'preact-material-components/Switch';
 import Select from 'preact-material-components/Select';
+import { save, open } from '@tauri-apps/plugin-dialog';
+import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 
 import 'preact-material-components/List/style.css';
 import 'preact-material-components/Switch/style.css';
@@ -226,39 +228,68 @@ const Profile = () => {
           </div>
         </div>
 
-        <div>
-          <h3 class="text-xs uppercase text-secondary font-semibold mb-2 px-4 sm:px-0">Data Management</h3>
-          <List class="bg-secondary rounded-md border border-border-primary p-0">
-            <SettingsItem
-              icon={RefreshCw}
-              primary="Export Database"
-              secondary="Save a backup of your local data"
-              onClick={async () => {
+<div>
+    <h3 class="text-xs uppercase text-secondary font-semibold mb-2 px-4 sm:px-0">Data Management</h3>
+    <List class="bg-secondary rounded-md border border-border-primary p-0">
+        <SettingsItem 
+            icon={RefreshCw} 
+            primary="Export Database" 
+            secondary="Save a backup of your local data" 
+            onClick={async () => {
                 try {
-                  const res = await invoke('export_database');
-                  alert(res);
+                    // 1. Ask user where to save (Returns a path or Android Content URI)
+                    const path = await save({
+                        filters: [{ name: 'SQLite Database', extensions: ['sqlite', 'db'] }],
+                        defaultPath: 'workouts_backup.sqlite',
+                    });
+                    
+                    if (!path) return; // User cancelled
+
+                    // 2. Get DB bytes from Backend
+                    const dbBytes = await invoke('get_database_file');
+
+                    // 3. Write bytes to the selected path using Frontend FS plugin
+                    // This handles Android Content URIs automatically!
+                    await writeFile(path, new Uint8Array(dbBytes));
+
+                    alert('Database exported successfully!');
                 } catch (e) {
-                  if (e !== "Export cancelled") alert(e);
+                    console.error(e);
+                    alert(`Export failed: ${e}`);
                 }
-              }}
-            />
-            <SettingsItem
-              icon={RefreshCw}
-              primary="Import Database"
-              secondary="Overwrite local data (Requires Restart)"
-              onClick={async () => {
-                if (confirm("This will overwrite ALL current data with the backup. Continue?")) {
-                  try {
-                    const res = await invoke('import_database');
-                    alert(res);
-                  } catch (e) {
-                    if (e !== "Import cancelled") alert(e);
-                  }
+            }} 
+        />
+        <SettingsItem 
+            icon={RefreshCw} 
+            primary="Import Database" 
+            secondary="Overwrite local data (Requires Restart)" 
+            onClick={async () => {
+                if(confirm("This will overwrite ALL current data with the backup. Continue?")) {
+                    try {
+                        // 1. Ask user to pick a file
+                        const path = await open({
+                            multiple: false,
+                            filters: [{ name: 'SQLite Database', extensions: ['sqlite', 'db'] }],
+                        });
+
+                        if (!path) return; // User cancelled
+
+                        // 2. Read bytes from selected path using Frontend FS plugin
+                        const fileBytes = await readFile(path);
+
+                        // 3. Send bytes to Backend to overwrite local DB
+                        await invoke('overwrite_database_file', { data: Array.from(fileBytes) });
+
+                        alert('Database imported successfully. Please restart the app.');
+                    } catch (e) {
+                        console.error(e);
+                        alert(`Import failed: ${e}`);
+                    }
                 }
-              }}
-            />
-          </List>
-        </div>
+            }} 
+        />
+    </List>
+</div>
 
         <div>
           <h3 class="text-xs uppercase text-secondary font-semibold mb-2 px-4 sm:px-0">Bodyweight Log</h3>
