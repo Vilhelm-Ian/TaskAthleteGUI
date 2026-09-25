@@ -33,14 +33,15 @@ jobs:
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: 34
-          ndk-version: 27.0.12077973
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            ndk;27.0.12077973
 
       - name: Export Android environment variables
         run: |
-          echo "NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
       - name: Build Tauri Android Debug APK
         run: |
