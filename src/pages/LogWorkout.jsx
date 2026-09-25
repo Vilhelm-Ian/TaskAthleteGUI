@@ -1,11 +1,13 @@
 import { h } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
 import { useLocation } from 'preact-iso';
 // Added Edit3 icon
-import { Calendar, Plus, ChevronLeft, ChevronRight, AlertTriangle, Loader2, Award, X as CloseIcon, Trash2, PlusSquare, Edit3 } from 'lucide-preact';
+import { Calendar, Plus, ChevronLeft, ChevronRight, AlertTriangle, Loader2, Award, X as CloseIcon, Trash2, PlusSquare, Edit3, RotateCcw } from 'lucide-preact';
 import DatePicker from '../components/DatePicker';
 import AddExerciseModal from '../components/AddExerciseModal';
+
+const EXERCISE_TYPES_CONST = { BODYWEIGHT: 'BodyWeight' };
 
 const processBackendWorkouts = (backendWorkouts) => {
   if (!backendWorkouts || backendWorkouts.length === 0) return [];
@@ -72,6 +74,8 @@ const LogWorkout = () => {
 
   const [pbNotification, setPbNotification] = useState(null);
   const [userConfigUnits, setUserConfigUnits] = useState('metric');
+  const [userBodyweight, setUserBodyweight] = useState(null);
+  const [repeatingGroup, setRepeatingGroup] = useState(null);
 
   const [allExerciseDefinitionsMap, setAllExerciseDefinitionsMap] = useState(new Map());
   const [preSelectedExerciseForModal, setPreSelectedExerciseForModal] = useState(null);
@@ -96,6 +100,8 @@ const LogWorkout = () => {
       try {
         const config = await invoke('get_config');
         if (config && config.units) setUserConfigUnits(config.units.toLowerCase());
+        const bodyweights = await invoke("get_body_weights");
+        if (bodyweights && bodyweights.length > 0) setUserBodyweight(bodyweights[0][2]);
       } catch (err) { console.error("LogWorkout: Failed to fetch user config:", err); }
     };
     fetchUserConfig();
@@ -215,6 +221,66 @@ const LogWorkout = () => {
   }, [allExerciseDefinitionsMap]);
 
 
+  const handleRepeatLastSet = useCallback(async (exerciseGroup) => {
+    const definition = allExerciseDefinitionsMap.get(exerciseGroup.name);
+    const lastEntry = exerciseGroup.logEntries[exerciseGroup.logEntries.length - 1];
+    if (!definition || !lastEntry || !dateKey) return;
+    const metrics = lastEntry.metrics || {};
+
+    setRepeatingGroup(exerciseGroup.name);
+    setError(null);
+    try {
+      const params = {
+        exercise_identifier: definition.name,
+        sets: 1,
+        date: `${dateKey}T12:00:00Z`,
+        reps: definition.log_reps && metrics.reps != null ? metrics.reps : undefined,
+        weight: undefined,
+        duration: definition.log_duration && metrics.duration != null ? metrics.duration : undefined,
+        distance: definition.log_distance && metrics.distance != null ? metrics.distance : undefined,
+        bodyweight_to_use: undefined,
+      };
+
+      if (definition.type_ === EXERCISE_TYPES_CONST.BODYWEIGHT) {
+        if (userBodyweight == null || isNaN(userBodyweight)) {
+          setError("Your bodyweight is not configured. Please set it in your profile/settings to log this exercise accurately.");
+          return;
+        }
+        params.bodyweight_to_use = userBodyweight;
+        if (definition.log_weight && metrics.weight != null) {
+          params.weight = Math.max(0, metrics.weight - userBodyweight);
+        }
+      } else if (definition.log_weight && metrics.weight != null) {
+        params.weight = metrics.weight;
+      }
+
+      const [, pbInfo] = await invoke('add_workout', { params });
+      handleModalActionCompleted(pbInfo);
+    } catch (err) {
+      console.error("Repeat set error:", err);
+      setError(typeof err === 'string' ? err : (err.message || "Failed to repeat set."));
+    } finally {
+      setRepeatingGroup(null);
+    }
+  }, [allExerciseDefinitionsMap, dateKey, userBodyweight]);
+
+  const touchStartRef = useRef(null);
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length !== 1 || showDatePicker || showAddExerciseModal) return;
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, [showDatePicker, showAddExerciseModal]);
+  const handleTouchEnd = useCallback((e) => {
+    if (!touchStartRef.current) return;
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      changeDate(dx < 0 ? 1 : -1);
+    }
+  }, [changeDate, showDatePicker, showAddExerciseModal]);
+
   const handleDeleteWorkoutLogEntry = async (logEntryDbId) => { // Parameter is dbId
     if (!logEntryDbId) return;
     try {
@@ -233,7 +299,11 @@ const LogWorkout = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-surface rounded-lg shadow-themed-lg p-4 sm:p-6 relative">
+    <div
+      className="flex flex-col h-full bg-surface rounded-lg shadow-themed-lg p-4 sm:p-6 relative"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Date Navigation Bar (remains same) */}
       <div className="flex items-center justify-between mb-6 sm:mb-8 bg-app p-3 sm:p-4 rounded-xl shadow-themed-md border border-divider relative">
         <button onClick={() => changeDate(-1)} className="p-2 sm:p-3 rounded-full hover:bg-hover transition-colors text-default" aria-label="Previous day"><ChevronLeft size={24} strokeWidth={2} /></button>
@@ -261,6 +331,8 @@ const LogWorkout = () => {
                   onOpenEditSetModal={handleOpenEditSetModal}
                   onDeleteWorkoutLogEntry={handleDeleteWorkoutLogEntry}
                   onGoToHistory={handleGoToHistory}
+                  onRepeatLastSet={handleRepeatLastSet}
+                  isRepeating={repeatingGroup === exerciseGroup.name}
                 />
               ))}
             </div>
@@ -319,7 +391,7 @@ const SetItem = ({ logEntry, index, userConfigUnits, onEdit, onDelete }) => (
   </div>
 );
 
-const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpenEditSetModal, onDeleteWorkoutLogEntry, onGoToHistory }) => {
+const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpenEditSetModal, onDeleteWorkoutLogEntry, onGoToHistory, onRepeatLastSet, isRepeating }) => {
   const lastLogEntryMetrics = exerciseGroup.logEntries.length > 0
     ? exerciseGroup.logEntries[exerciseGroup.logEntries.length - 1].metrics
     : {};
@@ -335,9 +407,19 @@ const ExerciseCard = ({ exerciseGroup, userConfigUnits, onOpenAddSetModal, onOpe
           >
             {exerciseGroup.name}
           </h3>
-          <button onClick={() => onOpenAddSetModal(exerciseGroup.name, lastLogEntryMetrics)} title="Add another set for this exercise" className="p-1.5 text-accent-emphasis hover:text-accent-emphasis-hover hover:bg-hover rounded-full transition-colors">
-            <PlusSquare size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onRepeatLastSet(exerciseGroup)}
+              disabled={isRepeating || exerciseGroup.logEntries.length === 0}
+              title="Repeat the last logged set"
+              className="p-1.5 text-accent-emphasis hover:text-accent-emphasis-hover hover:bg-hover rounded-full transition-colors disabled:opacity-50"
+            >
+              {isRepeating ? <Loader2 size={20} className="animate-spin" /> : <RotateCcw size={20} />}
+            </button>
+            <button onClick={() => onOpenAddSetModal(exerciseGroup.name, lastLogEntryMetrics)} title="Add another set for this exercise" className="p-1.5 text-accent-emphasis hover:text-accent-emphasis-hover hover:bg-hover rounded-full transition-colors">
+              <PlusSquare size={20} />
+            </button>
+          </div>
         </div>
         {exerciseGroup.logEntries && exerciseGroup.logEntries.length > 0 ? (
           <div className="space-y-3">
