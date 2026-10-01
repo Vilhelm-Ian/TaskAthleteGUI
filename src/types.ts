@@ -31,7 +31,7 @@ export interface Workout {
     sets: number | null;
     reps: number | null;
     weight: number | null;
-    duration: number | null; // seconds?
+    duration_seconds: number | null; // total seconds
     distance: number | null;
     notes: string | null;
     bodyweight: number | null;
@@ -86,7 +86,7 @@ export interface AddWorkoutParams {
     sets?: number;
     reps?: number;
     weight?: number;
-    duration?: number;
+    duration?: number; // total seconds
     distance?: number;
     notes?: string;
     implicit_type?: ExerciseType; // Use the defined type
@@ -102,7 +102,7 @@ export interface EditWorkoutParams {
     new_reps?: number;
     new_weight?: number;
     new_bodyweight?: number;
-    new_duration?: number;
+    new_duration?: number; // total seconds
     new_distance_arg?: number;
     new_notes?: string;
     new_date?: string; // "YYYY-MM-DD"

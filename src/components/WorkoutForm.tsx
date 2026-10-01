@@ -57,7 +57,7 @@ export const WorkoutForm: FunctionalComponent<WorkoutFormProps> = ({
                 sets: initialData.sets ?? undefined,
                 reps: initialData.reps ?? undefined,
                 weight: initialData.weight ?? undefined,
-                duration: initialData.duration ?? undefined,
+                duration: initialData.duration_seconds ?? undefined,
                 distance: initialData.distance ?? undefined,
                 notes: initialData.notes ?? undefined,
                 bodyweight_to_use: initialData.bodyweight ?? undefined, // Assuming this maps to bodyweight_to_use on add/edit

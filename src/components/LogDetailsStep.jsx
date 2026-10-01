@@ -19,6 +19,19 @@ const LogDetailsStep = ({
     onLogDataChange({ target: { name: field, value: newValue } });
   };
 
+  const adjustDurationMinutes = (delta) => {
+    const current = parseInt(logData.durationMinutes, 10) || 0;
+    onLogDataChange({ target: { name: 'durationMinutes', value: Math.max(0, current + delta) } });
+  };
+
+  const adjustDurationSeconds = (delta) => {
+    const mins = parseInt(logData.durationMinutes, 10) || 0;
+    const secs = parseInt(logData.durationSeconds, 10) || 0;
+    const total = Math.max(0, mins * 60 + secs + delta);
+    onLogDataChange({ target: { name: 'durationMinutes', value: Math.floor(total / 60) } });
+    onLogDataChange({ target: { name: 'durationSeconds', value: total % 60 } });
+  };
+
   return (
     <form className="space-y-4 sm:space-y-5">
       {selectedExercise.type_ === EXERCISE_TYPES.BODYWEIGHT && (
@@ -99,34 +112,67 @@ const LogDetailsStep = ({
 
       {selectedExercise.log_duration && (
         <div>
-          <label htmlFor="duration" className="block text-sm font-medium text-default mb-1">
-            Duration <span className="text-xs text-muted">(minutes)</span>
-          </label>
-          <div className="flex items-center">
-            <button
-              type="button"
-              onClick={() => adjustValue('duration', -1)}
-              className="px-3 py-2 bg-surface border border-subtle rounded-l-lg text-default focus:outline-none"
-            >
-              -
-            </button>
-            <input
-              type="number"
-              name="duration"
-              id="duration"
-              value={logData.duration}
-              onInput={onLogDataChange}
-              placeholder="e.g., 30"
-              min="0"
-              className="w-full p-2.5 bg-surface text-default border-y border-subtle focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
-            />
-            <button
-              type="button"
-              onClick={() => adjustValue('duration', 1)}
-              className="px-3 py-2 bg-surface border border-subtle rounded-r-lg text-default focus:outline-none"
-            >
-              +
-            </button>
+          <span className="block text-sm font-medium text-default mb-1">Duration</span>
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <label htmlFor="durationMinutes" className="block text-xs text-muted mb-1">Minutes</label>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => adjustDurationMinutes(-1)}
+                  className="px-3 py-2 bg-surface border border-subtle rounded-l-lg text-default focus:outline-none"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  name="durationMinutes"
+                  id="durationMinutes"
+                  value={logData.durationMinutes}
+                  onInput={onLogDataChange}
+                  placeholder="e.g., 30"
+                  min="0"
+                  className="w-full p-2.5 bg-surface text-default border-y border-subtle focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => adjustDurationMinutes(1)}
+                  className="px-3 py-2 bg-surface border border-subtle rounded-r-lg text-default focus:outline-none"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="flex-1">
+              <label htmlFor="durationSeconds" className="block text-xs text-muted mb-1">Seconds</label>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => adjustDurationSeconds(-1)}
+                  className="px-3 py-2 bg-surface border border-subtle rounded-l-lg text-default focus:outline-none"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  name="durationSeconds"
+                  id="durationSeconds"
+                  value={logData.durationSeconds}
+                  onInput={onLogDataChange}
+                  placeholder="e.g., 30"
+                  min="0"
+                  max="59"
+                  className="w-full p-2.5 bg-surface text-default border-y border-subtle focus:ring-2 focus:ring-accent-subtle-bg focus:border-accent-emphasis shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => adjustDurationSeconds(1)}
+                  className="px-3 py-2 bg-surface border border-subtle rounded-r-lg text-default focus:outline-none"
+                >
+                  +
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

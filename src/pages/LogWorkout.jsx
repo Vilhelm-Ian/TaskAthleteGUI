@@ -6,6 +6,7 @@ import { useLocation } from 'preact-iso';
 import { Calendar, Plus, ChevronLeft, ChevronRight, AlertTriangle, Loader2, Award, X as CloseIcon, Trash2, PlusSquare, Edit3, RotateCcw } from 'lucide-preact';
 import DatePicker from '../components/DatePicker';
 import AddExerciseModal from '../components/AddExerciseModal';
+import { formatDuration, splitDuration } from '../utils/formatDuration';
 
 const EXERCISE_TYPES_CONST = { BODYWEIGHT: 'BodyWeight' };
 
@@ -27,7 +28,7 @@ const processBackendWorkouts = (backendWorkouts) => {
     const metrics = {};
     if (workout.reps != null) metrics.reps = workout.reps;
     if (workout.weight != null) metrics.weight = workout.weight;
-    if (workout.duration_minutes != null) metrics.duration = workout.duration_minutes;
+    if (workout.duration_seconds != null) metrics.duration = workout.duration_seconds;
     if (workout.distance != null) metrics.distance = workout.distance;
 
     // Handle multiple sets from a single backend workout entry
@@ -160,7 +161,7 @@ const LogWorkout = () => {
     switch (type) {
       case 'weight': return `${value.toFixed(1)} ${userConfigUnits === 'imperial' ? 'lbs' : 'kg'}`;
       case 'reps': return `${value} reps`;
-      case 'duration': return `${value} min`;
+      case 'duration': return formatDuration(value);
       case 'distance': return userConfigUnits === 'imperial' ? `${(value * 0.621371).toFixed(2)} miles` : `${value.toFixed(2)} km`;
       default: return value.toString();
     }
@@ -184,10 +185,12 @@ const LogWorkout = () => {
     const definition = allExerciseDefinitionsMap.get(exerciseName);
     if (definition) {
       setPreSelectedExerciseForModal(definition);
+      const { minutes: durationMinutes, seconds: durationSeconds } = splitDuration(metricsToCopy.duration);
       const modalLogData = {
         reps: metricsToCopy.reps?.toString() || '',
         weight: metricsToCopy.weight?.toString() || '',
-        duration: metricsToCopy.duration?.toString() || '',
+        durationMinutes,
+        durationSeconds,
         distance: metricsToCopy.distance?.toString() || ''
       };
       setInitialLogDataForModal(modalLogData);
@@ -206,10 +209,12 @@ const LogWorkout = () => {
 
     if (definition) {
       setPreSelectedExerciseForModal(definition);
+      const { minutes: durationMinutes, seconds: durationSeconds } = splitDuration(logEntryToEdit.metrics.duration);
       const modalLogData = {
         reps: logEntryToEdit.metrics.reps?.toString() || '',
         weight: logEntryToEdit.metrics.weight?.toString() || '',
-        duration: logEntryToEdit.metrics.duration?.toString() || '',
+        durationMinutes,
+        durationSeconds,
         distance: logEntryToEdit.metrics.distance?.toString() || ''
       };
       setInitialLogDataForModal(modalLogData);
@@ -367,7 +372,7 @@ const SetItem = ({ logEntry, index, userConfigUnits, onEdit, onDelete }) => (
         <>
           {logEntry.metrics.reps != null && (<div className="flex-1 min-w-[60px] sm:min-w-[70px] p-1.5 text-center bg-app rounded-md shadow-themed-sm border border-subtle"><span className="block text-md sm:text-lg font-semibold text-default">{logEntry.metrics.reps}</span><span className='block text-xs text-accent-emphasis font-medium'>Reps</span></div>)}
           {logEntry.metrics.weight != null && (<div className="flex-1 min-w-[60px] sm:min-w-[70px] p-1.5 text-center bg-app rounded-md shadow-themed-sm border border-subtle"><span className="block text-md sm:text-lg font-semibold text-default">{logEntry.metrics.weight}</span><span className="block text-xs text-subtle">{userConfigUnits === 'imperial' ? 'lbs' : 'kg'}</span></div>)}
-          {logEntry.metrics.duration != null && (<div className="flex-1 min-w-[60px] sm:min-w-[70px] p-1.5 text-center bg-app rounded-md shadow-themed-sm border border-subtle"><span className="block text-md sm:text-lg font-semibold text-default">{logEntry.metrics.duration}</span><span className="block text-xs text-subtle">min</span></div>)}
+          {logEntry.metrics.duration != null && (<div className="flex-1 min-w-[60px] sm:min-w-[70px] p-1.5 text-center bg-app rounded-md shadow-themed-sm border border-subtle"><span className="block text-md sm:text-lg font-semibold text-default">{formatDuration(logEntry.metrics.duration)}</span><span className="block text-xs text-subtle">Time</span></div>)}
           {logEntry.metrics.distance != null && (<div className="flex-1 min-w-[60px] sm:min-w-[70px] p-1.5 text-center bg-app rounded-md shadow-themed-sm border border-subtle"><span className="block text-md sm:text-lg font-semibold text-default">{logEntry.metrics.distance}</span><span className="block text-xs text-subtle">{userConfigUnits === 'imperial' ? 'miles' : 'km'}</span></div>)}
         </>
       )}

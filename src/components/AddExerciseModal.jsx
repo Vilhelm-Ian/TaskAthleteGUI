@@ -5,6 +5,7 @@ import { X, Loader2, AlertTriangle } from 'lucide-preact';
 import CreateExerciseModal from './CreateExerciseModal';
 import ExerciseSelectionStep from './ExerciseSelectionStep';
 import LogDetailsStep from './LogDetailsStep';
+import { splitDuration, toTotalSeconds } from '../utils/formatDuration';
 
 const EXERCISE_TYPES_CONST = { BODYWEIGHT: 'BodyWeight' };
 
@@ -27,7 +28,7 @@ const AddExerciseModal = ({
   const [step, setStep] = useState(1);
   const [count, setCount] = useState(1);
   const [selectedExercise, setSelectedExercise] = useState(null);
-  const [logData, setLogData] = useState({ reps: '', weight: '', duration: '', distance: '' });
+  const [logData, setLogData] = useState({ reps: '', weight: '', durationMinutes: '', durationSeconds: '', distance: '' });
   const [configLoading, setConfigLoading] = useState(true);
   const [userBodyweight, setUserBodyweight] = useState(null);
   const [userBodyweightUnit, setUserBodyweightUnit] = useState('kg');
@@ -69,23 +70,23 @@ const AddExerciseModal = ({
 
       if (preSelectedExerciseProp) {
         setSelectedExercise(preSelectedExerciseProp);
-        setLogData(initialLogDataProp || { reps: '', weight: '', duration: '', distance: '' });
+        setLogData(initialLogDataProp || { reps: '', weight: '', durationMinutes: '', durationSeconds: '', distance: '' });
         setStep(2);
       } else {
         setStep(1);
         setSelectedExercise(null);
-        setLogData({ reps: '', weight: '', duration: '', distance: '' });
+        setLogData({ reps: '', weight: '', durationMinutes: '', durationSeconds: '', distance: '' });
       }
     } else {
         setStep(1);
         setSelectedExercise(null);
-        setLogData({ reps: '', weight: '', duration: '', distance: '' });
+        setLogData({ reps: '', weight: '', durationMinutes: '', durationSeconds: '', distance: '' });
     }
   }, [isOpen, preSelectedExerciseProp, initialLogDataProp, editingWorkoutLogId, fetchUserConfig]);
 
   const handleExerciseSelectFromStep1 = useCallback(async (exerciseDef) => {
     setSelectedExercise(exerciseDef);
-    const baseLogData = { reps: '', weight: '', duration: '', distance: '' };
+    const baseLogData = { reps: '', weight: '', durationMinutes: '', durationSeconds: '', distance: '' };
     setLogData(baseLogData);
     setStep(2);
     setError(null);
@@ -100,7 +101,11 @@ const AddExerciseModal = ({
                 const newLogData = {}; 
                 if (exerciseDef.log_reps && prev.reps != null) newLogData.reps = prev.reps.toString();
                 if (exerciseDef.log_weight && prev.weight != null) newLogData.weight = prev.weight.toString();
-                if (exerciseDef.log_duration && prev.duration_minutes != null) newLogData.duration = prev.duration_minutes.toString();
+                if (exerciseDef.log_duration && prev.duration_seconds != null) {
+                    const { minutes, seconds } = splitDuration(prev.duration_seconds);
+                    newLogData.durationMinutes = minutes;
+                    newLogData.durationSeconds = seconds;
+                }
                 if (exerciseDef.log_distance && prev.distance != null) newLogData.distance = prev.distance.toString();
                 setLogData(current => ({...baseLogData, ...newLogData}));
             }
@@ -122,7 +127,7 @@ const AddExerciseModal = ({
     let hasMetrics = false;
     if (selectedExercise.log_reps && String(logData.reps).trim()) hasMetrics = true;
     if (selectedExercise.log_weight && String(logData.weight).trim()) hasMetrics = true;
-    if (selectedExercise.log_duration && String(logData.duration).trim()) hasMetrics = true;
+    if (selectedExercise.log_duration && (String(logData.durationMinutes).trim() || String(logData.durationSeconds).trim())) hasMetrics = true;
     if (selectedExercise.log_distance && String(logData.distance).trim()) hasMetrics = true;
 
     if (!hasMetrics) {
@@ -139,7 +144,7 @@ const AddExerciseModal = ({
         const editPayloadRaw = {
           id: editingWorkoutLogId,
           new_reps: selectedExercise.log_reps ? parseNumericInput(logData.reps, parseInt) : undefined,
-          new_duration: selectedExercise.log_duration ? parseNumericInput(logData.duration, parseInt) : undefined,
+          new_duration: selectedExercise.log_duration ? toTotalSeconds(logData.durationMinutes, logData.durationSeconds) : undefined,
           new_distance_arg: selectedExercise.log_distance ? parseNumericInput(logData.distance, parseFloat) : undefined,
           new_weight: undefined,
           new_bodyweight: undefined,
@@ -185,7 +190,7 @@ const AddExerciseModal = ({
           date: `${currentDateKey}T12:00:00Z`,
           reps: selectedExercise.log_reps ? parseNumericInput(logData.reps, parseInt) : undefined,
           weight: selectedExercise.log_weight ? parseNumericInput(logData.weight, parseFloat) : undefined,
-          duration: selectedExercise.log_duration ? parseNumericInput(logData.duration, parseInt) : undefined,
+          duration: selectedExercise.log_duration ? toTotalSeconds(logData.durationMinutes, logData.durationSeconds) : undefined,
           distance: selectedExercise.log_distance ? parseNumericInput(logData.distance, parseFloat) : undefined,
           bodyweight_to_use: undefined,
         };
@@ -237,7 +242,7 @@ const AddExerciseModal = ({
           <div className="flex items-center justify-between p-4 sm:p-5 border-b border-subtle bg-app">
             <h2 className="text-xl sm:text-2xl font-semibold text-default flex items-center">
                 {showHeaderBackButton && (
-                    <button type="button" onClick={() => { setStep(1); setError(null); setSelectedExercise(null); setLogData({ reps: '', weight: '', duration: '', distance: '' }); }} className="mr-3 p-1.5 rounded-full text-subtle hover:bg-surface-alt hover:text-default transition-colors" aria-label="Back"></button>
+                    <button type="button" onClick={() => { setStep(1); setError(null); setSelectedExercise(null); setLogData({ reps: '', weight: '', durationMinutes: '', durationSeconds: '', distance: '' }); }} className="mr-3 p-1.5 rounded-full text-subtle hover:bg-surface-alt hover:text-default transition-colors" aria-label="Back"></button>
                 )}
                 {getEffectiveTitle()}
             </h2>

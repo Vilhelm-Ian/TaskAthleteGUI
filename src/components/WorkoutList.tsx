@@ -109,7 +109,7 @@ export const WorkoutList: FunctionalComponent<WorkoutListProps> = ({
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         {w.sets && w.reps ? `${w.sets}x${w.reps}` : ''}
                                         {w.weight ? ` @ ${w.weight} ${w.bodyweight ? '(BW: '+w.bodyweight+')' : ''}` : ''}
-                                        {w.duration ? ` ${w.duration}s` : ''}
+                                        {w.duration_seconds ? ` ${w.duration_seconds}s` : ''}
                                         {w.distance ? ` ${w.distance} units` : ''} {/* Add units from config later */}
                                     </td>
                                      <td class="px-6 py-4 text-sm max-w-xs truncate" title={w.notes ?? ''}>{w.notes ?? '-'}</td>

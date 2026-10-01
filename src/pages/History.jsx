@@ -3,6 +3,7 @@ import { useLocation } from 'preact-iso';
 import { useState, useEffect, useMemo } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
 import { SlidersHorizontal, Calendar as CalendarIcon, ChevronRight, List, LayoutList, X, AlertTriangle, Loader2 } from 'lucide-preact'; // Added Loader2
+import { formatDuration } from '../utils/formatDuration';
 
 // --- Helper to parse muscle strings "Chest,Triceps" or ["Chest", "Triceps"] into ['chest', 'triceps'] ---
 const parseMuscles = (muscleData) => {
@@ -25,10 +26,10 @@ const parseMuscles = (muscleData) => {
 // --- Updated WorkoutCard ---
 const WorkoutCard = ({ workout, exerciseDef, onSelectWorkout }) => {
   // --- DURATION ---
-  // workout.duration_minutes from Rust is i64, so it's whole minutes.
+  // workout.duration_seconds from Rust is i64 (total seconds).
   let durationDisplay = null;
-  if (workout.durationMinutes != null && workout.durationMinutes > 0) { // Corrected: workout.durationMinutes
-    durationDisplay = `${workout.durationMinutes}m`;
+  if (workout.duration_seconds != null && workout.duration_seconds > 0) {
+    durationDisplay = formatDuration(workout.duration_seconds);
   }
 
   // --- EXERCISE TYPE ---

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { invoke } from '@tauri-apps/api/core';
 import * as d3 from 'd3';
 import { ListChecks, Target, Timer } from 'lucide-preact';
+import { formatDuration } from '../utils/formatDuration';
 
 // Define types based on your Rust structs (ensure they are accurate)
 interface ExerciseDefinition {
@@ -24,7 +25,7 @@ type ParsedChartDataPoint = { date: Date; value: number };
 interface PersonalBestsStats {
   max_weight: number | null;
   max_reps: number | null;
-  max_duration_minutes: number | null;
+  max_duration_seconds: number | null;
   max_distance_km: number | null; // Backend sends km
 }
 
@@ -54,7 +55,7 @@ const graphTypeOptions = [
   { value: 'MaxReps', label: 'Max Reps (at any weight)' },
   { value: 'WorkoutVolume', label: 'Total Volume' },
   { value: 'WorkoutReps', label: 'Total Reps' },
-  { value: 'WorkoutDuration', label: 'Total Duration (min)' },
+  { value: 'WorkoutDuration', label: 'Total Duration (s)' },
   { value: 'WorkoutDistance', label: 'Total Distance' },
 ];
 
@@ -292,8 +293,8 @@ const PersonalBestsTable = ({ pbs, exerciseDef, config }: { pbs: PersonalBestsSt
   if (exerciseDef.log_reps && pbs.max_reps !== null) {
     data.push({ label: 'Max Reps', value: formatStatValue(pbs.max_reps) });
   }
-  if (exerciseDef.log_duration && pbs.max_duration_minutes !== null) {
-    data.push({ label: 'Max Duration', value: formatStatValue(pbs.max_duration_minutes, 'min', 'mins') });
+  if (exerciseDef.log_duration && pbs.max_duration_seconds !== null) {
+    data.push({ label: 'Max Duration', value: formatDuration(pbs.max_duration_seconds) });
   }
   if (exerciseDef.log_distance && pbs.max_distance_km !== null) {
     let displayDistance = pbs.max_distance_km;
